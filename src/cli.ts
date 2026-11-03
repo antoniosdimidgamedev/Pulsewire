@@ -180,8 +180,8 @@ Usage:
 
 Options:
   --demo                         Force the local demo provider
-  --ai                           Enable local AI replies in the demo
-  --ai-model <name>              Enable AI replies with a specific model
+  --ai                           Enable local AI replies (use "make ai")
+  --ai-model <name>              Model name to request (default qwen3:0.6b)
   --no-ai                        Disable AI replies from the config file
   --provider <name>              demo (default) or googlechat
   --config <file>                Use a specific config.json

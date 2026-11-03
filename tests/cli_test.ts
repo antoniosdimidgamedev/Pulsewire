@@ -152,8 +152,8 @@ function config(): AppConfig {
       ambientIntervalMs: 0,
       ai: {
         enabled: false,
-        baseUrl: "http://127.0.0.1:11434/v1",
-        model: "qwen2.5:0.5b",
+        baseUrl: "http://127.0.0.1:9931/v1",
+        model: "qwen3:0.6b",
         temperature: 0.8,
         maxTokens: 96,
         timeoutMs: 20_000,

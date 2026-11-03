@@ -25,8 +25,8 @@ replies disabled (the default), the demo makes no network calls at all.
 - Unicode box drawing and an optional ASCII-only mode
 - Truecolor, 256-color, and no-color output, plus `NO_COLOR` support
 - Zero runtime npm dependencies; one `deno compile` binary per platform
-- Optional local-AI demo replies through any OpenAI-compatible endpoint (Ollama, llama.cpp, LM
-  Studio)
+- Optional local-AI demo replies with a pinned llama.cpp + Qwen3 0.6B setup; any OpenAI-compatible
+  endpoint also works
 
 ## Requirements
 
@@ -58,15 +58,17 @@ and test steps as CI.
 
 Useful tasks:
 
-| Task                | What it does                                   |
-| ------------------- | ---------------------------------------------- |
-| `deno task start`   | Run the TUI with your resolved configuration   |
-| `deno task dev`     | Force the local demo provider                  |
-| `deno task test`    | Run the test suite                             |
-| `deno task check`   | Type-check source, preview script, and tests   |
-| `deno task lint`    | Lint source, tests, and scripts                |
-| `deno task fmt`     | Format the project                             |
-| `deno task preview` | Print a static preview without opening the TUI |
+| Task                 | What it does                                   |
+| -------------------- | ---------------------------------------------- |
+| `deno task start`    | Run the TUI with your resolved configuration   |
+| `deno task dev`      | Force the local demo provider                  |
+| `deno task test`     | Run the test suite                             |
+| `deno task check`    | Type-check source, scripts, and tests          |
+| `deno task lint`     | Lint source, tests, and scripts                |
+| `deno task fmt`      | Format the project                             |
+| `deno task preview`  | Print a static preview without opening the TUI |
+| `deno task ai`       | Install llama.cpp if needed, serve, and run    |
+| `deno task ai:setup` | Download and verify llama.cpp and the model    |
 
 The `Makefile` wraps the most useful tasks:
 
@@ -75,6 +77,10 @@ The `Makefile` wraps the most useful tasks:
 | `make run` / `make start` | Start the TUI                               |
 | `make dev`                | Start the local demo provider               |
 | `make ai`                 | Start the demo with local AI replies        |
+| `make ai-setup`           | Download llama.cpp and Qwen3 0.6B           |
+| `make ai-serve`           | Run the llama.cpp server alone              |
+| `make ai-status`          | Show the local AI runtime and model         |
+| `make ai-clean`           | Delete the downloaded runtime and model     |
 | `make preview`            | Print a static preview                      |
 | `make test`               | Run the test suite                          |
 | `make verify`             | Run formatting, lint, type-check, and tests |
@@ -103,8 +109,8 @@ The first run seeds the Juniper Studio demo workspace under your local data dire
 message in the demo may produce a simulated reply after a short delay. Disable this with
 `"simulateActivity": false` or `PULSEWIRE_SIMULATE_ACTIVITY=false`.
 
-The replies are canned by default. To have a tiny local model write them in character, run `make ai`
-(or `./run.sh --ai`). See [Local AI replies](#local-ai-replies-in-the-demo).
+The replies are canned by default. To have a tiny local model write them in character, run
+`make ai`. See [Local AI replies](#local-ai-replies-in-the-demo).
 
 To wipe the demo and start over:
 
@@ -165,8 +171,8 @@ Start from [`config.example.json`](config.example.json):
     "ambientIntervalMs": 75000,
     "ai": {
       "enabled": false,
-      "baseUrl": "http://127.0.0.1:11434/v1",
-      "model": "qwen2.5:0.5b",
+      "baseUrl": "http://127.0.0.1:9931/v1",
+      "model": "qwen3:0.6b",
       "temperature": 0.8,
       "maxTokens": 96,
       "timeoutMs": 20000,
@@ -189,7 +195,7 @@ Start from [`config.example.json`](config.example.json):
 | `demo.ambientIntervalMs` | non-negative integer                   | Background demo activity interval   |
 | `demo.ai.enabled`        | boolean                                | Use a local model for demo replies  |
 | `demo.ai.baseUrl`        | http(s) URL                            | OpenAI-compatible API base URL      |
-| `demo.ai.model`          | string                                 | Model name, e.g. `qwen2.5:0.5b`     |
+| `demo.ai.model`          | string                                 | Model name, e.g. `qwen3:0.6b`       |
 | `demo.ai.temperature`    | number, 0–2                            | Sampling temperature                |
 | `demo.ai.maxTokens`      | integer, 1–512                         | Reply length limit                  |
 | `demo.ai.timeoutMs`      | integer, 500–120000                    | Request timeout                     |
@@ -233,41 +239,68 @@ deno run --allow-read --allow-write --allow-env --allow-sys src/main.ts --print-
 
 The demo normally uses canned replies. You can point it at a tiny local model instead, so the
 Juniper Studio teammates answer in character. Pulsewire speaks the OpenAI chat-completions protocol,
-so any compatible local server works. No model is bundled and there are no new dependencies: the
-model runs in its own process.
+so any compatible server works. No model is bundled and there are no new dependencies: the model
+runs in its own process.
 
-### Ollama (simplest)
-
-```sh
-ollama pull qwen2.5:0.5b
-ollama serve              # usually already running
-./run.sh --ai             # or: make ai
-```
-
-`qwen2.5:0.5b` is the default. It is small (roughly 400 MB quantized) and fast enough for one-line
-banter. Other good choices are `qwen3:0.6b` and `smollm2:360m`:
+### One command (llama.cpp)
 
 ```sh
-./run.sh --ai-model qwen3:0.6b
+make ai
 ```
+
+This checks the Pulsewire data directory, downloads a pinned llama.cpp build and **Qwen3 0.6B**
+(Q4_K_M, about 379 MiB) if they are missing, verifies the SHA-256 of both downloads, starts
+`llama-server` on `127.0.0.1:9931`, and opens the TUI. The download is about 470 MiB in total and
+the model is stored outside the repository:
+
+| Platform | Location                                                                     |
+| -------- | ---------------------------------------------------------------------------- |
+| Linux    | `~/.local/share/pulsewire/models/` and `~/.local/share/pulsewire/llama.cpp/` |
+| Windows  | `%LOCALAPPDATA%\Pulsewire\models\` and `%LOCALAPPDATA%\Pulsewire\llama.cpp\` |
+
+Useful related targets:
+
+| Command          | What it does                                              |
+| ---------------- | --------------------------------------------------------- |
+| `make ai`        | Install if needed, serve, and open the demo               |
+| `make ai-setup`  | Download and verify llama.cpp and Qwen3 0.6B              |
+| `make ai-serve`  | Run the llama.cpp server without the TUI                  |
+| `make ai-status` | Show the installed runtime, model, endpoint, and log path |
+| `make ai-clean`  | Delete the downloaded runtime and model                   |
+
+Server output goes to `llama-server.log` in the data directory, never into the TUI. `make ai` reuses
+a server that is already healthy on the configured port and stops only the server it started.
+
+### Manual or different llama.cpp builds
+
+Any llama.cpp `llama-server` works. Load a small instruct model and point Pulsewire at it:
+
+```sh
+llama-server -m Qwen3-0.6B-Q4_K_M.gguf --host 127.0.0.1 --port 9931
+./run.sh --ai
+```
+
+The default endpoint is `http://127.0.0.1:9931/v1`, which matches current llama.cpp builds. The
+managed server uses `--reasoning off` so Qwen3 answers directly instead of spending tokens on a
+thinking block.
+
+On Linux, current llama.cpp builds link against OpenSSL 3. If the host only has OpenSSL 4 (for
+example Ubuntu 26.10), `make ai` fetches a private copy of the runtime into the llama.cpp directory;
+no system packages or root access are used. Only x86_64 Linux and Windows builds are pinned. On
+other platforms, install llama.cpp yourself and set `demo.ai.baseUrl`.
 
 ### Other OpenAI-compatible servers
 
-llama.cpp's `llama-server` exposes the same API:
-
-```sh
-llama-server -hf Qwen/Qwen2.5-0.5B-Instruct-GGUF --port 8080
-PULSEWIRE_AI_BASE_URL=http://127.0.0.1:8080/v1 ./run.sh --ai
-```
-
 LM Studio, LocalAI, and similar tools work too. Point `demo.ai.baseUrl` at the server's `/v1`
-endpoint (or directly at `/v1/chat/completions`).
+endpoint (or directly at `/v1/chat/completions`) and run `./run.sh --ai`. With the managed llama.cpp
+server the loaded model is always Qwen3 0.6B; `--ai-model` only changes the model name sent to the
+endpoint (and the alias used by `make ai`).
 
-| Flag                | Effect                                   |
-| ------------------- | ---------------------------------------- |
-| `--ai`              | Enable local AI replies for the demo     |
-| `--ai-model <name>` | Enable AI replies with a specific model  |
-| `--no-ai`           | Disable AI replies enabled in the config |
+| Flag                | Effect                                              |
+| ------------------- | --------------------------------------------------- |
+| `--ai`              | Enable local AI replies for the demo                |
+| `--ai-model <name>` | Override the requested model (default `qwen3:0.6b`) |
+| `--no-ai`           | Disable AI replies enabled in the config            |
 
 ### Behavior and safety
 
@@ -407,6 +440,7 @@ src/
     text.ts            ANSI-aware width, wrapping, and truncation
     theme.ts           Glyphs, colors, and layout tokens
 scripts/preview.ts     Static preview renderer
+scripts/llama.ts       Pinned llama.cpp install, server lifecycle, and tasks
 tests/                 Unit and integration tests with mocked transports
 ```
 

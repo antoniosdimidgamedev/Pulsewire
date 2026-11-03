@@ -44,7 +44,7 @@ export interface WorkspaceInfo {
   providerLabel: string;
   demo: boolean;
   currentUser: User;
-  /** Optional one-line note shown after connecting (for example, "AI replies · qwen2.5:0.5b"). */
+  /** Optional one-line note shown after connecting (for example, "AI replies · qwen3:0.6b"). */
   note?: string;
 }
 

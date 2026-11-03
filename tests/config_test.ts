@@ -217,8 +217,8 @@ Deno.test("Windows config paths are parsed with win32 semantics", async () => {
     ambientIntervalMs: 75_000,
     ai: {
       enabled: false,
-      baseUrl: "http://127.0.0.1:11434/v1",
-      model: "qwen2.5:0.5b",
+      baseUrl: "http://127.0.0.1:9931/v1",
+      model: "qwen3:0.6b",
       temperature: 0.8,
       maxTokens: 96,
       timeoutMs: 20_000,
@@ -230,8 +230,8 @@ Deno.test("Windows config paths are parsed with win32 semantics", async () => {
 Deno.test("local AI replies are opt-in and configurable", async () => {
   const defaults = await load({ platform: "linux", env: {} });
   strictEqual(defaults.demo.ai.enabled, false);
-  strictEqual(defaults.demo.ai.model, "qwen2.5:0.5b");
-  strictEqual(defaults.demo.ai.baseUrl, "http://127.0.0.1:11434/v1");
+  strictEqual(defaults.demo.ai.model, "qwen3:0.6b");
+  strictEqual(defaults.demo.ai.baseUrl, "http://127.0.0.1:9931/v1");
 
   const fromFile = await load({
     platform: "linux",

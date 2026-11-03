@@ -4,8 +4,8 @@ import type { ConversationKind, User } from "./types.ts";
  * A tiny, local-first reply generator for the demo workspace.
  *
  * Pulsewire talks to any OpenAI-compatible chat-completions endpoint, which
- * keeps the core free of runtime dependencies and lets people use Ollama,
- * llama.cpp, LM Studio, or a similar local server.
+ * keeps the core free of runtime dependencies. The supported local setup is
+ * llama.cpp (`deno task ai`); LM Studio and similar servers work too.
  */
 export interface AiReplySettings {
   baseUrl: string;

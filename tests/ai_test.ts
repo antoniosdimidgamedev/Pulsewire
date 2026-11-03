@@ -8,8 +8,8 @@ import {
 } from "../src/chat/ai.ts";
 
 const SETTINGS = {
-  baseUrl: "http://127.0.0.1:11434/v1",
-  model: "qwen2.5:0.5b",
+  baseUrl: "http://127.0.0.1:9931/v1",
+  model: "qwen3:0.6b",
   temperature: 0.7,
   maxTokens: 80,
   timeoutMs: 5_000,
@@ -34,8 +34,8 @@ const REQUEST: AiReplyRequest = {
 
 Deno.test("chat completion URLs accept a base or a full endpoint", () => {
   strictEqual(
-    chatCompletionsUrl("http://127.0.0.1:11434/v1"),
-    "http://127.0.0.1:11434/v1/chat/completions",
+    chatCompletionsUrl("http://127.0.0.1:9931/v1"),
+    "http://127.0.0.1:9931/v1/chat/completions",
   );
   strictEqual(
     chatCompletionsUrl("http://127.0.0.1:8080/v1/"),
@@ -49,7 +49,7 @@ Deno.test("chat completion URLs accept a base or a full endpoint", () => {
 
 Deno.test("the prompt carries the persona, topic, and recent turns", () => {
   const payload = buildChatRequest(SETTINGS, REQUEST);
-  strictEqual(payload.model, "qwen2.5:0.5b");
+  strictEqual(payload.model, "qwen3:0.6b");
   strictEqual(payload.stream, false);
   strictEqual(payload.temperature, 0.7);
   strictEqual(payload.max_tokens, 80);
@@ -126,11 +126,11 @@ Deno.test("the responder posts to the local endpoint and returns text", async ()
   const result = await responder.reply(REQUEST);
   strictEqual(result.ok, true);
   if (result.ok) strictEqual(result.text, "On it.");
-  strictEqual(calledUrl, "http://127.0.0.1:11434/v1/chat/completions");
+  strictEqual(calledUrl, "http://127.0.0.1:9931/v1/chat/completions");
   const parsed = JSON.parse(calledBody) as { model: string; messages: unknown[] };
-  strictEqual(parsed.model, "qwen2.5:0.5b");
+  strictEqual(parsed.model, "qwen3:0.6b");
   strictEqual(parsed.messages.length > 1, true);
-  strictEqual(responder.label, "qwen2.5:0.5b");
+  strictEqual(responder.label, "qwen3:0.6b");
 });
 
 Deno.test("the responder falls back cleanly on server and transport errors", async () => {

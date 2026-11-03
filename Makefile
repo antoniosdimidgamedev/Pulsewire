@@ -1,4 +1,4 @@
-.PHONY: help run start dev preview test check lint fmt fmt-check verify build build-linux build-windows clean
+.PHONY: help run start dev ai ai-setup ai-serve ai-status ai-clean preview test check lint fmt fmt-check verify build build-linux build-windows clean
 
 # Default target shows the available commands.
 .DEFAULT_GOAL := help
@@ -16,8 +16,20 @@ run start: ## Start the TUI with your resolved configuration
 dev: ## Start the TUI with the local demo provider
 	deno task dev
 
-ai: ## Start the demo with local AI replies (Ollama or compatible server)
-	deno task start --demo --ai
+ai: ## Install if needed, start llama.cpp, and open the demo
+	deno task ai
+
+ai-setup: ## Download llama.cpp and the Qwen3 0.6B model
+	deno task ai:setup
+
+ai-serve: ## Run the llama.cpp server on its own
+	deno task ai:serve
+
+ai-status: ## Show the local AI runtime, model, and endpoint
+	deno task ai:status
+
+ai-clean: ## Delete the downloaded llama.cpp runtime and model
+	deno task ai:clean
 
 preview: ## Print a static preview of the interface
 	deno task preview
