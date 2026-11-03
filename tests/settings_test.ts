@@ -1,5 +1,5 @@
 import { deepStrictEqual, rejects, strictEqual } from "node:assert/strict";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   describeGoogleChat,
   GOOGLE_CHAT_SCOPES,
@@ -14,8 +14,11 @@ Deno.test("Google settings default to local dataDir paths and sane limits", asyn
     env: {},
     cwd: "/work",
   });
-  strictEqual(settings.tokenPath, "/data/pulsewire/googlechat-token.json");
-  strictEqual(settings.readStatePath, "/data/pulsewire/googlechat-readstate.json");
+  strictEqual(settings.tokenPath, resolve("/work", "/data/pulsewire/googlechat-token.json"));
+  strictEqual(
+    settings.readStatePath,
+    resolve("/work", "/data/pulsewire/googlechat-readstate.json"),
+  );
   strictEqual(settings.pollIntervalMs, 20_000);
   strictEqual(settings.maxSpaces, 30);
   strictEqual(settings.clientId, undefined);
@@ -102,7 +105,7 @@ Deno.test("token file overrides resolve relative to the working directory", asyn
     env: { GOOGLE_CHAT_TOKEN_FILE: "secrets/token.json" },
     cwd: "/work",
   });
-  strictEqual(settings.tokenPath, "/work/secrets/token.json");
+  strictEqual(settings.tokenPath, resolve("/work", "secrets/token.json"));
 });
 
 Deno.test("bad Google settings are rejected", async () => {
