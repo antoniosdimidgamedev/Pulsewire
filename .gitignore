@@ -1,0 +1,23 @@
+# Runtime data and local configuration (never commit secrets)
+.env
+.env.*
+config.local.json
+*.local.json
+pulsewire.config.json
+
+# Demo data, if you point PULSEWIRE_DATA_DIR at the repository
+data/
+.pulsewire/
+googlechat-token.json
+googlechat-readstate.json
+google-client.json
+
+# Build output
+dist/
+coverage/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

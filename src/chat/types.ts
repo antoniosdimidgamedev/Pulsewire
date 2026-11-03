@@ -1,0 +1,121 @@
+/** Domain types shared by the UI and chat providers. */
+
+export type ConversationKind = "dm" | "group" | "space";
+
+export interface User {
+  id: string;
+  displayName: string;
+  handle: string;
+}
+
+export interface Conversation {
+  id: string;
+  kind: ConversationKind;
+  name: string;
+  topic?: string;
+  members: User[];
+  unreadCount: number;
+  lastActivityAt: string;
+  lastMessagePreview: string;
+  lastMessageAt?: string;
+  lastReadAt?: string;
+}
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  author: User;
+  body: string;
+  createdAt: string;
+  editedAt?: string;
+  deletedAt?: string;
+  replyToId?: string;
+}
+
+export interface SearchResult {
+  message: Message;
+  conversation: Conversation;
+  snippet: string;
+}
+
+export interface WorkspaceInfo {
+  name: string;
+  providerId: string;
+  providerLabel: string;
+  demo: boolean;
+  currentUser: User;
+}
+
+export interface SendMessageInput {
+  conversationId: string;
+  body: string;
+  replyToId?: string;
+}
+
+export interface GetMessagesOptions {
+  /** Return at most this many of the most recent messages. */
+  limit?: number;
+}
+
+export type ProviderEvent =
+  | {
+    type: "message-created";
+    conversationId: string;
+    message: Message;
+  }
+  | {
+    type: "message-updated";
+    conversationId: string;
+    message: Message;
+  }
+  | {
+    type: "message-deleted";
+    conversationId: string;
+    messageId: string;
+  }
+  | {
+    type: "typing";
+    conversationId: string;
+    user: User;
+    active: boolean;
+  }
+  | {
+    type: "error";
+    message: string;
+  };
+
+export type ProviderListener = (event: ProviderEvent) => void;
+
+/**
+ * The seam between the terminal UI and a chat service.
+ *
+ * Implementations own transport and persistence. The UI only relies on this
+ * interface, so a network provider can be added without changing rendering or
+ * keyboard behavior.
+ */
+export interface ChatProvider {
+  readonly id: string;
+  readonly label: string;
+  readonly demo: boolean;
+  readonly currentUser: User;
+
+  connect(): Promise<WorkspaceInfo>;
+  listConversations(): Promise<Conversation[]>;
+  getMessages(conversationId: string, options?: GetMessagesOptions): Promise<Message[]>;
+  getThread(messageId: string): Promise<Message[]>;
+  sendMessage(input: SendMessageInput): Promise<Message>;
+  editMessage(messageId: string, body: string): Promise<Message>;
+  deleteMessage(messageId: string): Promise<void>;
+  searchMessages(query: string): Promise<SearchResult[]>;
+  markRead(conversationId: string): Promise<void>;
+  subscribe(listener: ProviderListener): () => void;
+  dispose(): Promise<void>;
+  /** Chat apps and Google Chat spaces can differ in thread support. */
+  isThreadingSupported(conversation: Conversation): boolean;
+}
+
+export interface ProviderInfo {
+  id: string;
+  label: string;
+  demo: boolean;
+}

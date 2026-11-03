@@ -1,0 +1,12 @@
+{
+  "provider": "demo",
+  "displayName": "Ada",
+  "simulateActivity": true,
+  "ascii": false,
+  "color": "auto",
+  "demo": {
+    "connectDelayMs": 450,
+    "replyDelayMs": 1800,
+    "ambientIntervalMs": 75000
+  }
+}
