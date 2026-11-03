@@ -113,9 +113,9 @@ export function serverArgs(options: ServerArgsOptions): string[] {
     "1",
     "--no-webui",
     "--reasoning",
-    "off",
+    "on",
     "--reasoning-budget",
-    "0",
+    "256",
   ];
 }
 

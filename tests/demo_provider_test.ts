@@ -134,6 +134,43 @@ Deno.test("demo threads return the root and every reply", async () => {
   });
 });
 
+Deno.test("demo background chatter has members talking to each other", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "pulsewire-demo-chatter-" });
+  const provider = new DemoProvider({
+    dataPath: join(dir, "demo.json"),
+    displayName: "Alex Rivera",
+    simulateActivity: true,
+    connectDelayMs: 0,
+    ambientIntervalMs: 50,
+    now: () => FIXED,
+  });
+  const events: ProviderEvent[] = [];
+  provider.subscribe((event) => events.push(event));
+  try {
+    await provider.connect();
+
+    const chatters = new Set<string>();
+    const deadline = Date.now() + 3_000;
+    while (Date.now() < deadline) {
+      for (const event of events) {
+        if (
+          event.type === "message-created" &&
+          event.message.author.id !== "u-self"
+        ) {
+          chatters.add(event.message.author.id);
+        }
+      }
+      if (chatters.size >= 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    // Background activity should get at least two different members talking.
+    strictEqual(chatters.size >= 2, true);
+  } finally {
+    await provider.dispose();
+    await Deno.remove(dir, { recursive: true }).catch(() => undefined);
+  }
+});
+
 Deno.test("demo search covers bodies, authors, and conversation names", async () => {
   await withProvider(async ({ provider }) => {
     await provider.connect();

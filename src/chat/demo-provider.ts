@@ -843,8 +843,65 @@ export class DemoProvider implements ChatProvider {
         conversationId: message.conversationId,
         message: this.hydrateMessage(data, message),
       });
+      // Let a couple of other members chime in so the workspace chatter
+      // continues between user turns.
+      this.scheduleBackgroundChatter(message.conversationId, message);
     } catch (error) {
       this.emit({ type: "error", message: `Demo activity failed: ${errorMessage(error)}` });
+    }
+  }
+
+  /** After an ambient message lands, 1-2 other members reply after short
+   * staggered delays so people talk to each other in the background. */
+  private scheduleBackgroundChatter(conversationId: string, source: StoredMessage): void {
+    const data = this.requireData();
+    const conversation = data.conversations[conversationId];
+    if (!conversation) return;
+    const candidates = conversation.memberIds.filter(
+      (id) => id !== data.currentUserId && id !== source.authorId,
+    );
+    if (candidates.length === 0) return;
+    const count = Math.min(2, candidates.length);
+    const picked = shuffle(candidates).slice(0, count);
+    picked.forEach((authorId, index) => {
+      const timer = setTimeout(() => {
+        this.timers.delete(timer);
+        if (!this.connected) return;
+        void this.deliverAmbientReply(conversationId, source, authorId);
+      }, 600 + index * 700);
+      this.timers.add(timer);
+    });
+  }
+
+  private async deliverAmbientReply(
+    conversationId: string,
+    source: StoredMessage,
+    authorId: string,
+  ): Promise<void> {
+    try {
+      const current = this.requireData();
+      const conversation = current.conversations[conversationId];
+      const author = current.users[authorId];
+      if (!conversation || !author || !this.connected) return;
+
+      const body = ambientReply(source.body);
+      const reply: StoredMessage = {
+        id: `m-${crypto.randomUUID()}`,
+        conversationId,
+        authorId,
+        body,
+        createdAt: this.nowIso(),
+      };
+      current.messages[reply.id] = reply;
+      current.updatedAt = reply.createdAt;
+      await this.persist();
+      this.emit({
+        type: "message-created",
+        conversationId,
+        message: this.hydrateMessage(current, reply),
+      });
+    } catch (error) {
+      this.emit({ type: "error", message: `Background chatter failed: ${errorMessage(error)}` });
     }
   }
 }
@@ -904,7 +961,25 @@ const ambientMessages = [
   "Reminder to take a break before the next review.",
   "I am testing the empty states again this afternoon.",
   "One more pass on the shortcut hints and I think we are done.",
+  "Does anyone know if the config example is up to date?",
+  "Should we cut a release once the delivery ticks land?",
 ];
+
+const ambientReplies = [
+  "I'll take a look at that later today.",
+  "Good point - anything blocking on it?",
+  "Sounds right to me. Want me to draft it?",
+  "I can pick that up after the current pass.",
+  "That matches what I see locally.",
+  "Should we add it to the checklist so it isn't forgotten?",
+  "I think we're good unless someone objects.",
+  "Quick check: does this affect the Windows build too?",
+];
+
+function ambientReply(sourceBody: string): string {
+  const pool = sourceBody.includes("?") ? ambientReplies : ambientMessages;
+  return pool[Math.floor(Math.random() * pool.length)] ?? ambientMessages[0]!;
+}
 
 function simulatedReply(sourceBody: string, messageCount: number, authorId: string): string {
   const pool = sourceBody.includes("?") ? questionReplies : simulatedReplies;
@@ -916,4 +991,15 @@ function authorHash(value: string): number {
   let hash = 0;
   for (const char of value) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
   return hash;
+}
+
+function shuffle<T>(values: T[]): T[] {
+  const copy = values.slice();
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temp = copy[i]!;
+    copy[i] = copy[j]!;
+    copy[j] = temp;
+  }
+  return copy;
 }

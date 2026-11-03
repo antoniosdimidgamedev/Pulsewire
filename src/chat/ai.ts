@@ -252,6 +252,12 @@ export function sanitizeAiReply(raw: string, speakerName: string): string | null
   let text = raw.replace(/\r\n?/g, "\n").trim();
   if (!text) return null;
 
+  // Qwen3 (and other reasoning models) emit a `<thinking>...</thinking>` block
+  // when thinking mode is on. Strip it so only the spoken reply reaches the
+  // transcript; a thinking block is never a message the teammate "said".
+  text = text.replace(/<thinking[\s\S]*?<\/thinking>/gu, "");
+  text = text.replace(/<\/thinking>/gu, "");
+
   text = text.replace(/^```[a-zA-Z0-9_-]*\s*/u, "").replace(/```$/u, "").trim();
   text = text.replace(/^\s*#{1,6}\s*/gmu, "");
   text = text.replace(/^\s*[-*+]\s+/gmu, "");

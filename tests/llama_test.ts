@@ -80,8 +80,8 @@ Deno.test("server arguments are local, quiet, and deterministic", () => {
   strictEqual(value("--port"), "9931");
   strictEqual(value("-c"), "2048");
   strictEqual(args.includes("--no-webui"), true);
-  strictEqual(value("--reasoning"), "off");
-  strictEqual(value("--reasoning-budget"), "0");
+  strictEqual(value("--reasoning"), "on");
+  strictEqual(value("--reasoning-budget"), "256");
 });
 
 Deno.test("only loopback endpoints are managed locally", () => {

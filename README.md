@@ -23,6 +23,7 @@ replies disabled (the default), the demo makes no network calls at all.
   sent** state with retry
 - Group chats where every other member answers, and their canned or local-AI replies can ask
   follow-up questions
+- Background ambient chatter: demo members talk back and forth between user turns
 - Search across loaded messages, authors, and conversation names
 - Keyboard-first navigation with a help overlay and narrow-terminal mode
 - Loading, empty, and error states that stay inside the frame
@@ -317,6 +318,8 @@ endpoint (and the alias used by `make ai`).
 ### Behavior and safety
 
 - AI replies are **off by default**; with them off, the demo makes no network calls.
+- Qwen3 runs with **reasoning (thinking) mode on**, so the model can work through an answer before
+  speaking. Only the spoken reply reaches the transcript; the thinking block is stripped.
 - Each reply is generated from the last `demo.ai.history` messages, the conversation topic, and a
   short persona for the teammate who is replying.
 - The typing indicator stays visible while the model thinks. Output is cleaned up: Markdown, name
