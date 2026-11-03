@@ -333,6 +333,172 @@ Deno.test("AI failures fall back to canned replies with one warning", async () =
   }
 });
 
+Deno.test("demo group chats get an answer from every other member", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "pulsewire-demo-group-" });
+  const provider = new DemoProvider({
+    dataPath: join(dir, "demo.json"),
+    displayName: "Alex Rivera",
+    simulateActivity: true,
+    connectDelayMs: 0,
+    replyDelayMs: 0,
+    receiptDelayMs: 10,
+    now: () => FIXED,
+  });
+  const events: ProviderEvent[] = [];
+  provider.subscribe((event) => events.push(event));
+  try {
+    await provider.connect();
+    const conversation = (await provider.listConversations()).find((item) =>
+      item.id === "c-grp-launch"
+    );
+    const others = (conversation?.members ?? [])
+      .map((member) => member.id)
+      .filter((id) => id !== "u-self")
+      .sort();
+    strictEqual(others.length, 4);
+
+    const sent = await provider.sendMessage({
+      conversationId: "c-grp-launch",
+      body: "Which detail matters most before launch?",
+    });
+    await waitFor(
+      () => repliesTo(events, "c-grp-launch", sent.id).length >= others.length,
+      "every group member to reply",
+    );
+
+    const replies = repliesTo(events, "c-grp-launch", sent.id);
+    deepStrictEqual(replies.map((reply) => reply.author.id).sort(), others);
+    // Every member answers, and questions stay question-shaped so they can ask back.
+    strictEqual(replies.every((reply) => reply.body.includes("?")), true);
+
+    const typing = new Set(
+      events
+        .filter((event) =>
+          event.type === "typing" &&
+          event.active &&
+          event.conversationId === "c-grp-launch"
+        )
+        .map((event) => event.type === "typing" ? event.user.id : ""),
+    );
+    deepStrictEqual([...typing].sort(), others);
+  } finally {
+    await provider.dispose();
+    await Deno.remove(dir, { recursive: true }).catch(() => undefined);
+  }
+});
+
+Deno.test("demo delivery ticks move from pending to sent to delivered", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "pulsewire-demo-delivery-" });
+  const provider = new DemoProvider({
+    dataPath: join(dir, "demo.json"),
+    displayName: "Alex Rivera",
+    simulateActivity: false,
+    connectDelayMs: 0,
+    receiptDelayMs: 10,
+    now: () => FIXED,
+  });
+  const events: ProviderEvent[] = [];
+  provider.subscribe((event) => events.push(event));
+  try {
+    await provider.connect();
+    const sent = await provider.sendMessage({
+      conversationId: "c-dm-maya",
+      body: "Do these ticks look right?",
+    });
+    strictEqual(sent.delivery?.status, "pending");
+
+    await waitFor(
+      () => deliveryStatuses(events, sent.id).includes("delivered"),
+      "the message to be delivered",
+    );
+    deepStrictEqual(deliveryStatuses(events, sent.id), ["sent", "delivered"]);
+
+    const stored = (await provider.getMessages("c-dm-maya")).find((message) =>
+      message.id === sent.id
+    );
+    strictEqual(stored?.delivery?.status, "delivered");
+  } finally {
+    await provider.dispose();
+    await Deno.remove(dir, { recursive: true }).catch(() => undefined);
+  }
+});
+
+Deno.test("demo marks your message read once every member answers", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "pulsewire-demo-read-" });
+  const provider = new DemoProvider({
+    dataPath: join(dir, "demo.json"),
+    displayName: "Alex Rivera",
+    simulateActivity: true,
+    connectDelayMs: 0,
+    replyDelayMs: 0,
+    receiptDelayMs: 5_000,
+    now: () => FIXED,
+  });
+  const events: ProviderEvent[] = [];
+  provider.subscribe((event) => events.push(event));
+  try {
+    const workspace = await provider.connect();
+    const conversation = (await provider.listConversations()).find((item) =>
+      item.id === "c-grp-terminal"
+    );
+    const others = (conversation?.members ?? [])
+      .map((member) => member.id)
+      .filter((id) => id !== workspace.currentUser.id)
+      .sort();
+    strictEqual(others.length, 3);
+
+    const sent = await provider.sendMessage({
+      conversationId: "c-grp-terminal",
+      body: "Does everyone see the same ticks?",
+    });
+    await waitFor(
+      () => deliveryStatuses(events, sent.id).includes("read"),
+      "every member to read the message",
+    );
+
+    const read = events
+      .filter((event) => event.type === "message-delivery" && event.messageId === sent.id)
+      .map((event) => event.type === "message-delivery" ? event.delivery : undefined)
+      .filter((delivery) => delivery?.status === "read")
+      .at(-1);
+    deepStrictEqual([...(read?.readBy ?? [])].sort(), others);
+  } finally {
+    await provider.dispose();
+    await Deno.remove(dir, { recursive: true }).catch(() => undefined);
+  }
+});
+
+function repliesTo(
+  events: ProviderEvent[],
+  conversationId: string,
+  sentId: string,
+): import("../src/chat/types.ts").Message[] {
+  return events
+    .filter((event) =>
+      event.type === "message-created" &&
+      event.conversationId === conversationId &&
+      event.message.id !== sentId &&
+      event.message.author.id !== "u-self"
+    )
+    .map((event) => event.type === "message-created" ? event.message : undefined)
+    .filter((message) => message !== undefined);
+}
+
+function deliveryStatuses(events: ProviderEvent[], messageId: string): string[] {
+  return events
+    .filter((event) => event.type === "message-delivery" && event.messageId === messageId)
+    .map((event) => event.type === "message-delivery" ? event.delivery.status : "");
+}
+
+async function waitFor(check: () => boolean, what: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    if (check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`Timed out waiting for ${what}.`);
+}
+
 async function waitForReply(
   events: ProviderEvent[],
   conversationId: string,

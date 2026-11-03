@@ -46,6 +46,8 @@ interface ReadStateFile {
  * Limitations of the public API are surfaced honestly:
  * - No full-text search endpoint, so search covers recently loaded messages.
  * - No typing indicators.
+ * - No message-level delivery or read receipts, so only "sent" is shown for
+ *   messages created during this session. History messages carry no ticks.
  * - Threads are supported in named spaces (Google Chat's own restriction).
  * - Incoming messages are received by polling; there is no push channel for
  *   user-auth desktop clients.
@@ -233,6 +235,9 @@ export class GoogleChatProvider implements ChatProvider {
     this.mergeRaw(input.conversationId, [normalized]);
     await this.markRead(input.conversationId).catch(() => undefined);
     const message = this.hydrateMessage(normalized);
+    // The API confirms the server accepted this message; it does not expose
+    // per-recipient delivery or read receipts.
+    message.delivery = { status: "sent" };
     this.emit({ type: "message-created", conversationId: input.conversationId, message });
     return message;
   }

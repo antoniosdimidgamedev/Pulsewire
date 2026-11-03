@@ -60,6 +60,11 @@ export interface Glyphs {
   search: string;
   thread: string;
   pin: string;
+  deliveryPending: string;
+  deliverySent: string;
+  deliveryDelivered: string;
+  deliveryRead: string;
+  deliveryFailed: string;
 }
 
 const UNICODE_GLYPHS: Glyphs = {
@@ -88,6 +93,11 @@ const UNICODE_GLYPHS: Glyphs = {
   search: "⌕",
   thread: "≡",
   pin: "●",
+  deliveryPending: "◌",
+  deliverySent: "✓",
+  deliveryDelivered: "✓✓",
+  deliveryRead: "✓✓",
+  deliveryFailed: "✕",
 };
 
 const ASCII_GLYPHS: Glyphs = {
@@ -116,6 +126,11 @@ const ASCII_GLYPHS: Glyphs = {
   search: "?",
   thread: "=",
   pin: "*",
+  deliveryPending: "...",
+  deliverySent: "v",
+  deliveryDelivered: "vv",
+  deliveryRead: "vv",
+  deliveryFailed: "x",
 };
 
 const COLORS: Record<Tone, string> = {

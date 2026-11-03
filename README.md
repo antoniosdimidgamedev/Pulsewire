@@ -19,6 +19,10 @@ replies disabled (the default), the demo makes no network calls at all.
 - Direct messages, group chats, and spaces in one conversation list
 - Unread badges, last-message previews, relative timestamps, and day dividers
 - Send, edit, delete, reply in threads, and open a focused thread view
+- WhatsApp/Signal-style delivery ticks: sending, sent, delivered, and read, plus a visible **not
+  sent** state with retry
+- Group chats where every other member answers, and their canned or local-AI replies can ask
+  follow-up questions
 - Search across loaded messages, authors, and conversation names
 - Keyboard-first navigation with a help overlay and narrow-terminal mode
 - Loading, empty, and error states that stay inside the frame
@@ -106,11 +110,18 @@ installation is required there.
 3. Press `Ctrl+C` to quit.
 
 The first run seeds the Juniper Studio demo workspace under your local data directory. Sending a
-message in the demo may produce a simulated reply after a short delay. Disable this with
+message in the demo may produce a simulated reply after a short delay. In a group chat, every other
+member answers in turn, and replies can ask a follow-up question. Disable this with
 `"simulateActivity": false` or `PULSEWIRE_SIMULATE_ACTIVITY=false`.
 
 The replies are canned by default. To have a tiny local model write them in character, run
 `make ai`. See [Local AI replies](#local-ai-replies-in-the-demo).
+
+Your own messages show delivery state next to the timestamp: `◌` while sending, `✓` once the chat
+service accepts it, `✓✓` when it reaches the other members, and teal `✓✓` once everyone has read it.
+If a send fails, the message stays visible with `✕ not sent`; select it and press `u` to retry. In
+the demo these transitions are simulated locally. Google Chat only reports acceptance, so it shows
+`✓` for messages sent in the current session and never invents read receipts.
 
 To wipe the demo and start over:
 
@@ -134,6 +145,7 @@ deno run --allow-read --allow-write --allow-env --allow-sys src/main.ts --reset-
 | `t`                   | Open the focused thread view                            |
 | `e`                   | Edit your selected message                              |
 | `d`                   | Delete your selected message                            |
+| `u`                   | Retry a message that was not sent                       |
 | `s` or `/`            | Search loaded messages                                  |
 | `[` / `]`             | Previous / next conversation                            |
 | `?` or `F1`           | Help overlay                                            |
@@ -403,6 +415,9 @@ These come from Google's public API, not from Pulsewire:
   `GOOGLE_CHAT_POLL_INTERVAL_MS`.
 - **No full-text search endpoint.** Search covers messages already loaded in this session.
 - **No typing indicators.** Google Chat does not expose them to this API.
+- **No message-level delivery or read receipts.** Pulsewire shows `✓` (accepted by the service) for
+  messages it sends in the current session. It never guesses who read them, and history messages
+  carry no ticks.
 - **Threads are limited to named spaces.** Direct messages and group chats do not support threaded
   replies.
 - **Read state depends on the `chat.users.readstate` scope.** If Google denies it, Pulsewire falls

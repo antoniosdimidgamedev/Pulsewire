@@ -9,6 +9,7 @@ import {
 } from "../src/ui/render.ts";
 import { Theme } from "../src/ui/theme.ts";
 import { stripAnsi, visibleWidth } from "../src/ui/text.ts";
+import type { Message, MessageDeliveryStatus } from "../src/chat/types.ts";
 import { FIXED_NOW, sampleUiState } from "./fixtures.ts";
 
 const plain = new Theme("none", false);
@@ -174,6 +175,41 @@ Deno.test("timeline groups messages by day and marks replies", () => {
   for (const line of timeline) {
     strictEqual(visibleWidth(line.text) <= 60, true);
   }
+});
+
+Deno.test("own messages show delivery ticks with a read-only accent", () => {
+  const author = { id: "u-self", displayName: "Alex Rivera", handle: "alex" };
+  const message = (status: MessageDeliveryStatus): Message => ({
+    id: `m-${status}`,
+    conversationId: "c-dm-maya",
+    author,
+    body: "Status check.",
+    createdAt: FIXED_NOW.toISOString(),
+    delivery: { status },
+  });
+  const header = (status: MessageDeliveryStatus, theme: Theme): string => {
+    const lines = buildTimeline([message(status)], 70, theme, FIXED_NOW, {
+      ownUserId: "u-self",
+    });
+    return lines.find((line) => line.kind === "message")?.text ?? "";
+  };
+
+  const pending = header("pending", plain);
+  strictEqual(stripAnsi(pending).includes("◌"), true);
+  strictEqual(stripAnsi(header("sent", plain)).includes("✓"), true);
+
+  const delivered = header("delivered", fancy);
+  const read = header("read", fancy);
+  strictEqual(stripAnsi(delivered).includes("✓✓"), true);
+  strictEqual(stripAnsi(read).includes("✓✓"), true);
+  // Delivered stays muted; read uses the teal accent, like Signal/WhatsApp.
+  strictEqual(delivered.includes("38;2;148;163;184"), true);
+  strictEqual(read.includes("38;2;94;234;212"), true);
+  strictEqual(delivered !== read, true);
+
+  const failed = header("failed", plain);
+  strictEqual(stripAnsi(failed).includes("✕ not sent"), true);
+  strictEqual(stripAnsi(header("failed", ascii)).includes("x not sent"), true);
 });
 
 Deno.test("ASCII mode uses only ASCII glyphs in the frame", () => {

@@ -241,6 +241,8 @@ Deno.test("Google provider connects, names spaces, and computes unread counts", 
     ]);
     const reply = messages.find((message) => message.id === "spaces/team/messages/m2");
     strictEqual(reply?.replyToId, "spaces/team/messages/m1");
+    // History carries no receipts: Google Chat does not expose them.
+    strictEqual(messages.every((message) => message.delivery === undefined), true);
   } finally {
     await provider.dispose();
     await Deno.remove(dir, { recursive: true }).catch(() => undefined);
@@ -261,6 +263,8 @@ Deno.test("Google provider sends, edits, and deletes messages", async () => {
     });
     strictEqual(sent.body, "a new message");
     strictEqual(sent.author.id, "users/me");
+    // The API confirms acceptance, so we show "sent" and never fake read receipts.
+    strictEqual(sent.delivery?.status, "sent");
     const createBody = h.bodies.find((body) =>
       typeof body === "object" && body !== null &&
       (body as { text?: string }).text === "a new message"

@@ -16,6 +16,7 @@ import type {
   Conversation,
   GetMessagesOptions,
   Message,
+  MessageDelivery,
   ProviderEvent,
   ProviderListener,
   SearchResult,
@@ -30,6 +31,8 @@ export interface DemoProviderOptions {
   simulateActivity?: boolean;
   connectDelayMs?: number;
   replyDelayMs?: number;
+  /** How long a sent message stays in each simulated delivery state. */
+  receiptDelayMs?: number;
   ambientIntervalMs?: number;
   ai?: AiResponder;
   now?: () => Date;
@@ -56,12 +59,14 @@ export class DemoProvider implements ChatProvider {
   private readonly simulateActivity: boolean;
   private readonly connectDelayMs: number;
   private readonly replyDelayMs: number;
+  private readonly receiptDelayMs: number;
   private readonly ambientIntervalMs: number;
   private readonly aiResponder?: AiResponder;
   private readonly now: () => Date;
   private readonly listeners = new Set<ProviderListener>();
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
   private readonly pendingReplies = new Set<string>();
+  private readonly replyQueues = new Map<string, StoredMessage[]>();
 
   private data?: DemoData;
   private connected = false;
@@ -76,6 +81,7 @@ export class DemoProvider implements ChatProvider {
     this.simulateActivity = options.simulateActivity ?? true;
     this.connectDelayMs = options.connectDelayMs ?? 0;
     this.replyDelayMs = options.replyDelayMs ?? 1_800;
+    this.receiptDelayMs = options.receiptDelayMs ?? 400;
     this.ambientIntervalMs = options.ambientIntervalMs ?? 75_000;
     this.aiResponder = options.ai;
     this.ai = options.ai !== undefined;
@@ -209,6 +215,7 @@ export class DemoProvider implements ChatProvider {
       authorId: data.currentUserId,
       body,
       createdAt: this.nowIso(),
+      delivery: { status: "pending" },
       ...(replyToId ? { replyToId } : {}),
     };
     data.messages[message.id] = message;
@@ -216,7 +223,8 @@ export class DemoProvider implements ChatProvider {
     await this.persist();
     const hydrated = this.hydrateMessage(data, message);
     this.emit({ type: "message-created", conversationId: input.conversationId, message: hydrated });
-    this.scheduleSimulatedReply(input.conversationId, message);
+    this.scheduleDeliveryReceipts(input.conversationId, message.id);
+    this.scheduleSimulatedReplies(input.conversationId, message);
     return hydrated;
   }
 
@@ -317,6 +325,7 @@ export class DemoProvider implements ChatProvider {
     if (this.ambientTimer !== undefined) clearTimeout(this.ambientTimer);
     this.ambientTimer = undefined;
     this.pendingReplies.clear();
+    this.replyQueues.clear();
     this.listeners.clear();
     this.connected = false;
     await this.persistChain.catch(() => undefined);
@@ -364,6 +373,13 @@ export class DemoProvider implements ChatProvider {
     if (stored.editedAt) message.editedAt = stored.editedAt;
     if (stored.deletedAt) message.deletedAt = stored.deletedAt;
     if (stored.replyToId) message.replyToId = stored.replyToId;
+    if (stored.delivery) {
+      message.delivery = {
+        status: stored.delivery.status,
+        ...(stored.delivery.readBy ? { readBy: [...stored.delivery.readBy] } : {}),
+        ...(stored.delivery.error ? { error: stored.delivery.error } : {}),
+      };
+    }
     return message;
   }
 
@@ -486,38 +502,131 @@ export class DemoProvider implements ChatProvider {
     await this.persistChain;
   }
 
-  private scheduleSimulatedReply(conversationId: string, source: StoredMessage): void {
-    if (!this.simulateActivity || this.pendingReplies.has(conversationId)) return;
+  private scheduleDeliveryReceipts(conversationId: string, messageId: string): void {
+    const schedule = (run: () => void) => {
+      const timer = setTimeout(() => {
+        this.timers.delete(timer);
+        run();
+      }, this.receiptDelayMs);
+      this.timers.add(timer);
+    };
+
+    schedule(() => {
+      void this.advanceDelivery(conversationId, messageId, "pending", "sent").then((advanced) => {
+        if (!advanced || !this.connected) return;
+        schedule(() => {
+          void this.advanceDelivery(conversationId, messageId, "sent", "delivered");
+        });
+      });
+    });
+  }
+
+  private async advanceDelivery(
+    conversationId: string,
+    messageId: string,
+    from: MessageDelivery["status"],
+    to: MessageDelivery["status"],
+  ): Promise<boolean> {
+    if (!this.connected) return false;
+    const data = this.requireData();
+    const message = data.messages[messageId];
+    if (!message || message.deletedAt || message.delivery?.status !== from) return false;
+    const conversation = data.conversations[conversationId];
+    if (!conversation) return false;
+    const recipients = conversation.memberIds.filter((id) => id !== data.currentUserId);
+    if (recipients.length === 0) return false;
+
+    message.delivery = {
+      ...message.delivery,
+      status: to,
+    };
+    data.updatedAt = this.nowIso();
+    await this.persist();
+    this.emit({
+      type: "message-delivery",
+      conversationId,
+      messageId,
+      delivery: this.hydrateDelivery(message.delivery),
+    });
+    return true;
+  }
+
+  /**
+   * Each message from the current user queues one reply from every other
+   * member of the conversation. Batches run in order so a quick follow-up
+   * message does not starve the first one.
+   */
+  private scheduleSimulatedReplies(conversationId: string, source: StoredMessage): void {
+    if (!this.simulateActivity) return;
+    const queue = this.replyQueues.get(conversationId) ?? [];
+    queue.push(source);
+    this.replyQueues.set(conversationId, queue);
+    this.drainReplyQueue(conversationId);
+  }
+
+  private drainReplyQueue(conversationId: string): void {
+    if (this.pendingReplies.has(conversationId)) return;
+    const queue = this.replyQueues.get(conversationId);
+    const source = queue?.shift();
+    if (!queue || !source) {
+      this.replyQueues.delete(conversationId);
+      return;
+    }
+    if (queue.length === 0) this.replyQueues.delete(conversationId);
+    this.pendingReplies.add(conversationId);
+    this.startReplyBatch(conversationId, source);
+  }
+
+  private startReplyBatch(conversationId: string, source: StoredMessage): void {
     const data = this.requireData();
     const conversation = data.conversations[conversationId];
-    if (!conversation) return;
-    const others = conversation.memberIds.filter((id) => id !== data.currentUserId);
-    if (others.length === 0) return;
-
-    this.pendingReplies.add(conversationId);
-    const authorId = others[this.messageCountFor(data, conversationId) % others.length];
-    if (!authorId) {
-      this.pendingReplies.delete(conversationId);
-      return;
-    }
-    const author = data.users[authorId];
-    if (!author) {
-      this.pendingReplies.delete(conversationId);
+    const others = conversation
+      ? conversation.memberIds.filter((id) => id !== data.currentUserId)
+      : [];
+    if (others.length === 0) {
+      this.finishReplyBatch(conversationId);
       return;
     }
 
-    this.emit({
-      type: "typing",
-      conversationId,
-      user: this.hydrateUser(data, authorId),
-      active: true,
+    const staggerMs = Math.max(0, Math.min(600, Math.floor(this.replyDelayMs / 2)));
+    let remaining = others.length;
+    const finish = () => {
+      remaining -= 1;
+      if (remaining <= 0) this.finishReplyBatch(conversationId);
+    };
+
+    others.forEach((authorId, index) => {
+      const startTimer = setTimeout(() => {
+        this.timers.delete(startTimer);
+        if (!this.connected) {
+          finish();
+          return;
+        }
+        const current = this.requireData();
+        if (!current.users[authorId] || !current.conversations[conversationId]) {
+          finish();
+          return;
+        }
+        this.emit({
+          type: "typing",
+          conversationId,
+          user: this.hydrateUser(current, authorId),
+          active: true,
+        });
+
+        const replyTimer = setTimeout(() => {
+          this.timers.delete(replyTimer);
+          void this.deliverSimulatedReply(conversationId, source, authorId).finally(finish);
+        }, this.replyDelayMs);
+        this.timers.add(replyTimer);
+      }, index * staggerMs);
+      this.timers.add(startTimer);
     });
+  }
 
-    const replyTimer = setTimeout(() => {
-      this.timers.delete(replyTimer);
-      void this.deliverSimulatedReply(conversationId, source, authorId);
-    }, this.replyDelayMs);
-    this.timers.add(replyTimer);
+  private finishReplyBatch(conversationId: string): void {
+    this.pendingReplies.delete(conversationId);
+    this.drainReplyQueue(conversationId);
   }
 
   private async deliverSimulatedReply(
@@ -532,7 +641,11 @@ export class DemoProvider implements ChatProvider {
       const author = current.users[authorId];
       if (!conversation || !author) return;
 
-      let body = simulatedReply(source.body, this.messageCountFor(current, conversationId));
+      let body = simulatedReply(
+        source.body,
+        this.messageCountFor(current, conversationId),
+        authorId,
+      );
       if (this.aiResponder) {
         const result = await this.aiResponder.reply(
           this.aiRequest(current, conversation, author, conversationId),
@@ -561,23 +674,84 @@ export class DemoProvider implements ChatProvider {
       };
       latest.messages[reply.id] = reply;
       latest.updatedAt = createdAt;
+      const deliveryUpdates = this.markOwnMessagesReadBy(latest, conversationId, authorId);
       await this.persist();
-      this.emit({
-        type: "typing",
-        conversationId,
-        user: this.hydrateUser(latest, authorId),
-        active: false,
-      });
       this.emit({
         type: "message-created",
         conversationId,
         message: this.hydrateMessage(latest, reply),
       });
+      for (const updated of deliveryUpdates) {
+        if (!updated.delivery) continue;
+        this.emit({
+          type: "message-delivery",
+          conversationId,
+          messageId: updated.id,
+          delivery: this.hydrateDelivery(updated.delivery),
+        });
+      }
     } catch (error) {
       this.emit({ type: "error", message: `Simulated reply failed: ${errorMessage(error)}` });
     } finally {
-      this.pendingReplies.delete(conversationId);
+      if (this.connected) {
+        const data = this.data;
+        const author = data?.users[authorId];
+        if (data && author) {
+          this.emit({
+            type: "typing",
+            conversationId,
+            user: this.hydrateUser(data, authorId),
+            active: false,
+          });
+        }
+      }
     }
+  }
+
+  /**
+   * A reply proves that its author has seen the messages above it. Mark the
+   * current user's earlier messages delivered first, then read once every
+   * other member has replied or been marked as a reader.
+   */
+  private markOwnMessagesReadBy(
+    data: DemoData,
+    conversationId: string,
+    readerId: string,
+  ): StoredMessage[] {
+    const conversation = data.conversations[conversationId];
+    if (!conversation || readerId === data.currentUserId) return [];
+    const recipients = conversation.memberIds.filter((id) => id !== data.currentUserId);
+    if (recipients.length === 0) return [];
+
+    const updates: StoredMessage[] = [];
+    for (const message of Object.values(data.messages)) {
+      if (
+        message.conversationId !== conversationId ||
+        message.authorId !== data.currentUserId ||
+        message.deletedAt
+      ) continue;
+      const delivery = message.delivery;
+      if (!delivery || delivery.status === "failed") continue;
+      const readers = new Set(delivery.readBy ?? []);
+      if (readers.has(readerId)) continue;
+      readers.add(readerId);
+      const readBy = recipients.filter((id) => readers.has(id));
+      const status = readBy.length === recipients.length ? "read" : "delivered";
+      if (delivery.status === status && (delivery.readBy?.length ?? 0) === readBy.length) {
+        continue;
+      }
+      message.delivery = { status, readBy };
+      updates.push(message);
+    }
+    return updates;
+  }
+
+  private hydrateDelivery(delivery: MessageDelivery): MessageDelivery {
+    return {
+      status: delivery.status,
+      ...(delivery.readBy ? { readBy: [...delivery.readBy] } : {}),
+      ...(delivery.error ? { error: delivery.error } : {}),
+    };
   }
 
   private aiRequest(
@@ -701,21 +875,25 @@ function snippetAround(body: string, query: string): string {
 }
 
 const simulatedReplies = [
-  "That makes sense. I will take a look and report back.",
+  "That makes sense. Which part should I pick up first?",
+  "I can take that. Do you want it in this pass or after the review?",
   "Nice. I had the same read on it.",
-  "Good catch - I will fold that into the next pass.",
+  "Good catch - I will fold that into the next pass. Anything else on your list?",
   "Works for me. Let's keep v0.1 focused and revisit after feedback.",
   "I added it to the checklist. Nothing blocking from my side.",
-  "That is clearer. The keyboard flow feels much easier to explain now.",
+  "That is clearer. Should the same wording appear in the help overlay?",
   "Agreed. Simplicity wins for the first release.",
   "I tested the narrow layout and it still holds together.",
+  "One question: do we want this in the README before launch?",
 ];
 
 const questionReplies = [
-  "Yes, that matches what I see locally.",
-  "I think so. Let me verify the edge case first.",
-  "Probably - but I would keep the fallback visible just in case.",
-  "Good question. I would choose the simpler option for v0.1.",
+  "Yes, that matches what I see locally. Should we lock it in?",
+  "I think so. Should I verify the edge case before we confirm?",
+  "Probably - but should we keep the fallback visible just in case?",
+  "Good question. Which option would you pick for v0.1?",
+  "That is my read too. Can you check the Windows path before we close it?",
+  "Almost certainly. What happens if the terminal is narrower than 40 columns?",
 ];
 
 const ambientMessages = [
@@ -728,7 +906,14 @@ const ambientMessages = [
   "One more pass on the shortcut hints and I think we are done.",
 ];
 
-function simulatedReply(sourceBody: string, messageCount: number): string {
+function simulatedReply(sourceBody: string, messageCount: number, authorId: string): string {
   const pool = sourceBody.includes("?") ? questionReplies : simulatedReplies;
-  return pool[messageCount % pool.length] ?? simulatedReplies[0]!;
+  const offset = authorHash(authorId) + messageCount;
+  return pool[offset % pool.length] ?? simulatedReplies[0]!;
+}
+
+function authorHash(value: string): number {
+  let hash = 0;
+  for (const char of value) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
+  return hash;
 }

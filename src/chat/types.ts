@@ -21,6 +21,17 @@ export interface Conversation {
   lastReadAt?: string;
 }
 
+/** WhatsApp/Signal-style delivery state for a message you sent. */
+export type MessageDeliveryStatus = "pending" | "sent" | "delivered" | "read" | "failed";
+
+export interface MessageDelivery {
+  status: MessageDeliveryStatus;
+  /** Members who have read the message, when the provider can prove it. */
+  readBy?: string[];
+  /** Short, user-safe reason a send failed. */
+  error?: string;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -30,6 +41,8 @@ export interface Message {
   editedAt?: string;
   deletedAt?: string;
   replyToId?: string;
+  /** Present for messages the current user sent; absent when a provider cannot report it. */
+  delivery?: MessageDelivery;
 }
 
 export interface SearchResult {
@@ -74,6 +87,12 @@ export type ProviderEvent =
     type: "message-deleted";
     conversationId: string;
     messageId: string;
+  }
+  | {
+    type: "message-delivery";
+    conversationId: string;
+    messageId: string;
+    delivery: MessageDelivery;
   }
   | {
     type: "typing";

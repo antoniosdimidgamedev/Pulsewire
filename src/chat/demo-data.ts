@@ -1,7 +1,15 @@
-import type { ConversationKind } from "./types.ts";
+import type { ConversationKind, MessageDelivery, MessageDeliveryStatus } from "./types.ts";
 import { ChatError } from "./errors.ts";
 
 export const DEMO_DATA_VERSION = 1;
+
+const DELIVERY_STATUSES: readonly MessageDeliveryStatus[] = [
+  "pending",
+  "sent",
+  "delivered",
+  "read",
+  "failed",
+];
 
 export interface StoredUser {
   id: string;
@@ -28,6 +36,7 @@ export interface StoredMessage {
   editedAt?: string;
   deletedAt?: string;
   replyToId?: string;
+  delivery?: MessageDelivery;
 }
 
 export interface DemoData {
@@ -128,7 +137,9 @@ export function seedDemoData(options: SeedOptions): DemoData {
     authorId: string,
     offsetMs: number,
     body: string,
-    extra: Partial<Pick<StoredMessage, "editedAt" | "deletedAt" | "replyToId">> = {},
+    extra: Partial<
+      Pick<StoredMessage, "editedAt" | "deletedAt" | "replyToId" | "delivery">
+    > = {},
   ) => {
     messages[id] = {
       id,
@@ -154,6 +165,7 @@ export function seedDemoData(options: SeedOptions): DemoData {
     currentUserId,
     48 * MINUTE,
     "Great. I kept the unread dot but dropped the second preview line so the names have room.",
+    { delivery: { status: "read", readBy: ["u-maya"] } },
   );
   add(
     "m-maya-3",
@@ -168,7 +180,7 @@ export function seedDemoData(options: SeedOptions): DemoData {
     currentUserId,
     44 * MINUTE,
     "Please do. The composer border is the part I am least sure about.",
-    { editedAt: iso(43 * MINUTE) },
+    { editedAt: iso(43 * MINUTE), delivery: { status: "read", readBy: ["u-maya"] } },
   );
   add(
     "m-maya-5",
@@ -192,6 +204,7 @@ export function seedDemoData(options: SeedOptions): DemoData {
     currentUserId,
     110 * MINUTE,
     "Excellent. Any color issues in the legacy console?",
+    { delivery: { status: "read", readBy: ["u-ivo"] } },
   );
   add(
     "m-ivo-3",
@@ -222,6 +235,12 @@ export function seedDemoData(options: SeedOptions): DemoData {
     currentUserId,
     175 * MINUTE,
     "I can take that. It should be one explicit flag, not a hidden key.",
+    {
+      delivery: {
+        status: "read",
+        readBy: ["u-maya", "u-noor", "u-tess", "u-ivo"],
+      },
+    },
   );
   add(
     "m-launch-3",
@@ -243,6 +262,12 @@ export function seedDemoData(options: SeedOptions): DemoData {
     currentUserId,
     160 * MINUTE,
     "Yes: header badge, status line, and README.",
+    {
+      delivery: {
+        status: "read",
+        readBy: ["u-maya", "u-noor", "u-tess", "u-ivo"],
+      },
+    },
   );
   add("m-launch-6", "c-grp-launch", "u-noor", 155 * MINUTE, "Perfect.");
   add(
@@ -274,7 +299,10 @@ export function seedDemoData(options: SeedOptions): DemoData {
     currentUserId,
     45 * MINUTE,
     "Agreed. I will also jump directly into a thread when the hit is a reply.",
-    { replyToId: "m-launch-thread" },
+    {
+      replyToId: "m-launch-thread",
+      delivery: { status: "delivered", readBy: ["u-ivo", "u-tess"] },
+    },
   );
   add(
     "m-launch-7",
@@ -298,6 +326,12 @@ export function seedDemoData(options: SeedOptions): DemoData {
     currentUserId,
     350 * MINUTE,
     "No fake browser chrome. Just good typography and clear focus.",
+    {
+      delivery: {
+        status: "read",
+        readBy: ["u-ivo", "u-rafael", "u-noor"],
+      },
+    },
   );
   add(
     "m-term-3",
@@ -328,6 +362,12 @@ export function seedDemoData(options: SeedOptions): DemoData {
     currentUserId,
     26 * HOUR,
     "Welcome to Pulsewire's local demo workspace. Everything here is generated on your machine.",
+    {
+      delivery: {
+        status: "read",
+        readBy: ["u-maya", "u-ivo", "u-noor", "u-tess", "u-rafael"],
+      },
+    },
   );
   add(
     "m-general-2",
@@ -364,6 +404,7 @@ export function seedDemoData(options: SeedOptions): DemoData {
     currentUserId,
     2 * HOUR,
     "I will bring the launch notes.",
+    { delivery: { status: "delivered", readBy: ["u-noor", "u-tess"] } },
   );
 
   // Space: design-lab
@@ -387,6 +428,7 @@ export function seedDemoData(options: SeedOptions): DemoData {
     currentUserId,
     3 * HOUR,
     "Done. The composer stays pinned.",
+    { delivery: { status: "read", readBy: ["u-maya", "u-tess"] } },
   );
   add(
     "m-design-4",
@@ -488,6 +530,35 @@ export function parseDemoData(raw: string): DemoData {
     if (message.replyToId !== undefined) {
       if (typeof message.replyToId !== "string" || !messages[message.replyToId]) {
         throw new ChatError("storage_corrupt", `Message "${id}" replies to a missing message.`);
+      }
+    }
+    if (message.delivery !== undefined) {
+      if (
+        !isRecord(message.delivery) ||
+        !DELIVERY_STATUSES.includes(message.delivery.status as MessageDeliveryStatus)
+      ) {
+        throw new ChatError("storage_corrupt", `Message "${id}" has an invalid delivery state.`);
+      }
+      if (message.delivery.readBy !== undefined) {
+        const conversationRecord = conversations[message.conversationId];
+        const memberIds =
+          isRecord(conversationRecord) && Array.isArray(conversationRecord.memberIds)
+            ? conversationRecord.memberIds
+            : [];
+        if (
+          !Array.isArray(message.delivery.readBy) ||
+          message.delivery.readBy.some((userId) =>
+            typeof userId !== "string" || !users[userId] || !memberIds.includes(userId)
+          )
+        ) {
+          throw new ChatError(
+            "storage_corrupt",
+            `Message "${id}" lists a reader who is not in the conversation.`,
+          );
+        }
+      }
+      if (message.delivery.error !== undefined && typeof message.delivery.error !== "string") {
+        throw new ChatError("storage_corrupt", `Message "${id}" has an invalid delivery error.`);
       }
     }
   }

@@ -137,11 +137,17 @@ export function selectedMessage(state: UiState): Message | undefined {
   return state.messages[state.messageIndex];
 }
 
+export interface TimelineOptions {
+  /** Author id used to decide which messages can show delivery ticks. */
+  ownUserId?: string;
+}
+
 export function buildTimeline(
   messages: Message[],
   width: number,
   theme: Theme,
   now: Date,
+  options: TimelineOptions = {},
 ): TimelineLine[] {
   const lines: TimelineLine[] = [];
   let lastDay = "";
@@ -166,13 +172,20 @@ export function buildTimeline(
     if (message.editedAt) meta += " · edited";
     if (message.deletedAt) meta += " · deleted";
 
-    const own = message.author.id === "u-self";
+    const own = options.ownUserId
+      ? message.author.id === options.ownUserId
+      : message.author.id === "u-self";
+    const delivery = own ? deliveryIndicator(message, theme) : "";
+    const deliveryWidth = visibleWidth(delivery);
     const rawName = own ? `${message.author.displayName} (you)` : message.author.displayName;
     const metaWidth = visibleWidth(meta);
-    const nameBudget = Math.max(4, width - prefixWidth - metaWidth - 3);
+    const nameBudget = Math.max(
+      4,
+      width - prefixWidth - metaWidth - deliveryWidth - (delivery ? 1 : 0) - 3,
+    );
     const name = truncateText(rawName, nameBudget);
     const header = theme.dim(prefix) + theme.author(message.author.id, name) +
-      "  " + theme.dim(meta);
+      "  " + theme.dim(meta) + (delivery ? ` ${delivery}` : "");
     lines.push({ text: header, messageId: message.id, kind: "message" });
 
     const bodyIndent = reply ? 4 : 2;
@@ -196,6 +209,27 @@ export function buildTimeline(
   }
 
   return lines;
+}
+
+/**
+ * WhatsApp/Signal-style ticks. Color carries the read state: two ticks are
+ * muted when delivered and accent-colored when read.
+ */
+function deliveryIndicator(message: Message, theme: Theme): string {
+  const delivery = message.delivery;
+  if (!delivery) return "";
+  switch (delivery.status) {
+    case "pending":
+      return theme.dim(theme.g.deliveryPending);
+    case "sent":
+      return theme.muted(theme.g.deliverySent);
+    case "delivered":
+      return theme.muted(theme.g.deliveryDelivered);
+    case "read":
+      return theme.fg("accent", theme.g.deliveryRead);
+    case "failed":
+      return theme.fg("danger", `${theme.g.deliveryFailed} not sent`);
+  }
 }
 
 export function renderFrame(state: UiState, viewport: Viewport, theme: Theme): string[] {
@@ -251,6 +285,7 @@ const ASCII_REPLACEMENTS: Record<string, string> = {
   "●": "*",
   "◆": "*",
   "◫": "=",
+  "◌": "o",
 };
 
 /** Keep ASCII mode honest even when a literal string slips past the glyph table. */
@@ -485,7 +520,9 @@ function conversationRows(
     ]);
   }
 
-  const timeline = buildTimeline(state.messages, width, theme, state.clock);
+  const timeline = buildTimeline(state.messages, width, theme, state.clock, {
+    ...(state.workspace ? { ownUserId: state.workspace.currentUser.id } : {}),
+  });
   if (timeline.length === 0) {
     const members = conversation.members
       .filter((member) => member.id !== state.workspace?.currentUser.id)
@@ -620,7 +657,15 @@ function renderOverlay(
     case "search":
       return renderSearch(overlay.state, width, content, theme, state.spinner, state.clock);
     case "thread":
-      return renderThread(overlay.state, width, content, theme, state.spinner, state.clock);
+      return renderThread(
+        overlay.state,
+        width,
+        content,
+        theme,
+        state.spinner,
+        state.clock,
+        state.workspace?.currentUser.id,
+      );
     case "confirm-delete":
       return renderConfirmDelete(overlay.message, width, content, theme);
   }
@@ -682,7 +727,13 @@ function helpEntries(): HelpEntry[] {
     { key: "t", description: "Open the selected thread" },
     { key: "e", description: "Edit your message" },
     { key: "d", description: "Delete your message" },
+    { key: "u", description: "Retry a message that was not sent" },
     { key: "s / /", description: "Search the workspace" },
+    { header: "Delivery" },
+    { key: "◌", description: "Sending" },
+    { key: "✓", description: "Sent to the chat service" },
+    { key: "✓✓", description: "Delivered, or read when teal" },
+    { key: "✕", description: "Not sent · select it, then press u" },
     { header: "Writing" },
     { key: "Enter", description: "Send or save" },
     { key: "Esc", description: "Cancel reply or edit" },
@@ -780,6 +831,7 @@ function renderThread(
   theme: Theme,
   spinner: number,
   now: Date,
+  ownUserId: string | undefined,
 ): OverlayRender {
   const rows: string[] = [];
   const title = theme.fg("muted", truncateText(thread.title, width));
@@ -795,7 +847,9 @@ function renderThread(
     }
   } else {
     const visibleHeight = Math.max(1, content - 1);
-    const timeline = buildTimeline(thread.messages, width, theme, now);
+    const timeline = buildTimeline(thread.messages, width, theme, now, {
+      ...(ownUserId ? { ownUserId } : {}),
+    });
     const offset = clamp(thread.offset, 0, Math.max(0, timeline.length - visibleHeight));
     const selectedId = thread.messages[thread.index]?.id;
     for (const line of timeline.slice(offset, offset + visibleHeight)) {

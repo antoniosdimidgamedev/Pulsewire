@@ -29,6 +29,7 @@ export function demoFixture(now: Date = FIXED_NOW): {
     if (stored.editedAt) message.editedAt = stored.editedAt;
     if (stored.deletedAt) message.deletedAt = stored.deletedAt;
     if (stored.replyToId) message.replyToId = stored.replyToId;
+    if (stored.delivery) message.delivery = structuredClone(stored.delivery);
     list.push(message);
     messages.set(stored.conversationId, list);
   }

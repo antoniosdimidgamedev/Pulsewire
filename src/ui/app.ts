@@ -1,4 +1,10 @@
-import type { ChatProvider, Message, ProviderEvent, SearchResult } from "../chat/types.ts";
+import type {
+  ChatProvider,
+  Message,
+  MessageDelivery,
+  ProviderEvent,
+  SearchResult,
+} from "../chat/types.ts";
 import { errorMessage, isChatError } from "../chat/errors.ts";
 import { formatDateTime } from "./text.ts";
 import {
@@ -375,6 +381,10 @@ export class PulsewireApp {
           this.confirmDelete();
           return;
         }
+        if (key.text === "u") {
+          this.retrySelectedFailed();
+          return;
+        }
         if (key.text === "i") {
           this.focusComposer();
           return;
@@ -714,27 +724,108 @@ export class PulsewireApp {
     this.state.status = editing ? "Saving changes…" : "Sending…";
     this.requestRender();
 
+    if (editing) {
+      try {
+        const message = await this.provider.editMessage(editing.id, body);
+        this.applySavedMessage(message, "updated");
+        this.state.composer = "";
+        this.state.composerCursor = 0;
+        this.state.editing = undefined;
+        this.state.replyTo = undefined;
+        this.setToast("Message updated.", "success");
+        void this.refreshConversationsSilently();
+      } catch (error) {
+        this.setToast(errorMessage(error), "error");
+      } finally {
+        this.state.status = undefined;
+        this.requestRender();
+      }
+      return;
+    }
+
+    const optimistic = this.createOptimisticMessage(
+      conversation.id,
+      body,
+      replyTo?.id,
+    );
+    this.appendLocalMessage(optimistic);
+    this.state.composer = "";
+    this.state.composerCursor = 0;
+    this.state.replyTo = undefined;
+    this.requestRender();
+    await this.deliverOptimistic(optimistic);
+  }
+
+  private createOptimisticMessage(
+    conversationId: string,
+    body: string,
+    replyToId?: string,
+  ): Message {
+    const author = this.state.workspace?.currentUser ?? {
+      id: "u-self",
+      displayName: "You",
+      handle: "you",
+    };
+    return {
+      id: `local-${crypto.randomUUID()}`,
+      conversationId,
+      author,
+      body,
+      createdAt: this.now().toISOString(),
+      delivery: { status: "pending" },
+      ...(replyToId ? { replyToId } : {}),
+    };
+  }
+
+  private appendLocalMessage(message: Message): void {
+    this.state.messages.push(message);
+    this.state.messageIndex = this.state.messages.length - 1;
+    this.requestRender();
+  }
+
+  private removeLocalMessage(messageId: string): boolean {
+    const index = this.state.messages.findIndex((candidate) => candidate.id === messageId);
+    if (index < 0) return false;
+    this.state.messages.splice(index, 1);
+    if (this.state.messageIndex >= index) {
+      this.state.messageIndex = Math.max(0, this.state.messageIndex - 1);
+    }
+    return true;
+  }
+
+  private async deliverOptimistic(optimistic: Message): Promise<void> {
+    this.state.status = "Sending…";
+    this.requestRender();
     try {
-      const message = editing
-        ? await this.provider.editMessage(editing.id, body)
-        : await this.provider.sendMessage({
-          conversationId: conversation.id,
-          body,
-          ...(replyTo ? { replyToId: replyTo.id } : {}),
-        });
-      this.applySavedMessage(message, editing ? "updated" : "created");
-      this.state.composer = "";
-      this.state.composerCursor = 0;
-      this.state.editing = undefined;
-      this.state.replyTo = undefined;
-      this.setToast(editing ? "Message updated." : "Message sent.", "success");
+      const message = await this.provider.sendMessage({
+        conversationId: optimistic.conversationId,
+        body: optimistic.body,
+        ...(optimistic.replyToId ? { replyToId: optimistic.replyToId } : {}),
+      });
+      this.removeLocalMessage(optimistic.id);
+      this.applySavedMessage(message, "created");
+      this.setToast("Message sent.", "success");
       void this.refreshConversationsSilently();
     } catch (error) {
-      this.setToast(errorMessage(error), "error");
+      optimistic.delivery = { status: "failed", error: errorMessage(error) };
+      this.setToast(
+        `Message not sent: ${errorMessage(error)} Select it and press u to retry.`,
+        "error",
+      );
     } finally {
       this.state.status = undefined;
       this.requestRender();
     }
+  }
+
+  private retrySelectedFailed(): void {
+    const message = selectedMessage(this.state);
+    if (!message || !message.id.startsWith("local-") || message.delivery?.status !== "failed") {
+      return;
+    }
+    message.delivery = { status: "pending" };
+    this.requestRender();
+    void this.deliverOptimistic(message);
   }
 
   private async refreshConversationsSilently(): Promise<void> {
@@ -794,6 +885,9 @@ export class PulsewireApp {
 
   private applyReceived(conversationId: string, message: Message): void {
     if (this.state.phase !== "ready") return;
+    if (message.author.id === this.state.workspace?.currentUser.id) {
+      this.reconcileLocalEcho(message);
+    }
     const current = selectedConversation(this.state);
     const isCurrent = current?.id === conversationId;
     if (isCurrent) {
@@ -821,6 +915,21 @@ export class PulsewireApp {
       message.createdAt,
     );
     this.requestRender();
+  }
+
+  private reconcileLocalEcho(message: Message): void {
+    const index = this.state.messages.findIndex((candidate) =>
+      candidate.id.startsWith("local-") &&
+      candidate.conversationId === message.conversationId &&
+      candidate.body === message.body &&
+      candidate.replyToId === message.replyToId &&
+      (candidate.delivery?.status === "pending" || candidate.delivery?.status === "failed")
+    );
+    if (index < 0) return;
+    this.state.messages.splice(index, 1);
+    if (this.state.messageIndex >= index) {
+      this.state.messageIndex = Math.max(0, this.state.messageIndex - 1);
+    }
   }
 
   private applyUpdated(conversationId: string, message: Message): void {
@@ -870,6 +979,19 @@ export class PulsewireApp {
     this.requestRender();
   }
 
+  private applyDelivery(messageId: string, delivery: MessageDelivery): void {
+    if (this.state.phase !== "ready") return;
+    const message = this.state.messages.find((candidate) => candidate.id === messageId);
+    if (message) message.delivery = delivery;
+    if (this.state.overlay?.kind === "thread") {
+      const threadMessage = this.state.overlay.state.messages.find((candidate) =>
+        candidate.id === messageId
+      );
+      if (threadMessage) threadMessage.delivery = delivery;
+    }
+    this.requestRender();
+  }
+
   private onProviderEvent(event: ProviderEvent): void {
     switch (event.type) {
       case "message-created":
@@ -880,6 +1002,9 @@ export class PulsewireApp {
         break;
       case "message-deleted":
         this.applyDeleted(event.conversationId, event.messageId);
+        break;
+      case "message-delivery":
+        this.applyDelivery(event.messageId, event.delivery);
         break;
       case "typing":
         this.state.typing = event.active ? event.user : undefined;
@@ -1186,6 +1311,7 @@ export class PulsewireApp {
       layout.mainContentWidth,
       this.theme,
       this.state.clock,
+      this.timelineOptions(),
     );
     const selectedId = selectedMessage(this.state)?.id;
     let start = -1;
@@ -1224,6 +1350,7 @@ export class PulsewireApp {
       layout.mainContentWidth,
       this.theme,
       this.state.clock,
+      this.timelineOptions(),
     );
     const selectedId = thread.messages[thread.index]?.id;
     let start = -1;
@@ -1241,6 +1368,11 @@ export class PulsewireApp {
       if (end >= thread.offset + view) thread.offset = end - view + 1;
     }
     thread.offset = clamp(thread.offset, 0, Math.max(0, timeline.length - view));
+  }
+
+  private timelineOptions(): { ownUserId?: string } {
+    const ownUserId = this.state.workspace?.currentUser.id;
+    return ownUserId ? { ownUserId } : {};
   }
 
   private requestRender(): void {
