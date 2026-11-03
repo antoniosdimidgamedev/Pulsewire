@@ -22,7 +22,8 @@
   "fmt": {
     "lineWidth": 100,
     "semiColons": true,
-    "singleQuote": false
+    "singleQuote": false,
+    "newLineKind": "lf"
   },
   "lint": {
     "rules": {
