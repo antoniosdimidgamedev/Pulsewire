@@ -3,6 +3,7 @@ import { ConfigError } from "../config.ts";
 import { GoogleOAuthSession, type GoogleSession, StaticGoogleSession } from "../google/oauth.ts";
 import { GoogleChatProvider } from "../google/provider.ts";
 import { type GoogleChatSettings, loadGoogleChatSettings } from "../google/settings.ts";
+import { createAiResponder } from "./ai.ts";
 import { DemoProvider } from "./demo-provider.ts";
 import type { ChatProvider } from "./types.ts";
 
@@ -20,6 +21,7 @@ export async function createProvider(config: AppConfig): Promise<ChatProvider> {
         connectDelayMs: config.demo.connectDelayMs,
         replyDelayMs: config.demo.replyDelayMs,
         ambientIntervalMs: config.demo.ambientIntervalMs,
+        ...(config.demo.ai.enabled ? { ai: createAiResponder(config.demo.ai) } : {}),
       });
     case "googlechat":
       return await createGoogleProvider(config);

@@ -30,6 +30,7 @@ export function createUiState(provider: ChatProvider): UiState {
     phase: "loading",
     providerLabel: provider.label,
     demo: provider.demo,
+    ai: provider.ai,
     conversations: [],
     conversationIndex: -1,
     messages: [],
@@ -107,7 +108,12 @@ export class PulsewireApp {
         this.state.conversationIndex = 0;
         await this.openConversation(first.id, { focusMessages: false });
       }
-      this.setToast(`Connected to ${workspace.name}.`, "success");
+      this.setToast(
+        workspace.note
+          ? `Connected to ${workspace.name}. ${workspace.note}.`
+          : `Connected to ${workspace.name}.`,
+        "success",
+      );
     } catch (error) {
       this.state.phase = "error";
       this.state.error = errorMessage(error);

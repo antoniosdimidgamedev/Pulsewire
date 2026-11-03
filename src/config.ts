@@ -3,10 +3,21 @@ import { posix, win32 } from "node:path";
 
 export type ColorMode = "auto" | "truecolor" | "ansi256" | "none";
 
+export interface DemoAiConfig {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  timeoutMs: number;
+  history: number;
+}
+
 export interface DemoConfig {
   connectDelayMs: number;
   replyDelayMs: number;
   ambientIntervalMs: number;
+  ai: DemoAiConfig;
 }
 
 export interface AppConfig {
@@ -36,6 +47,13 @@ export interface LoadConfigOptions {
   readTextFile?: (path: string) => Promise<string>;
 }
 
+interface FileDemoConfig {
+  connectDelayMs?: number;
+  replyDelayMs?: number;
+  ambientIntervalMs?: number;
+  ai?: Partial<DemoAiConfig>;
+}
+
 interface FileConfig {
   provider?: string;
   displayName?: string;
@@ -43,7 +61,7 @@ interface FileConfig {
   simulateActivity?: boolean;
   ascii?: boolean;
   color?: ColorMode;
-  demo?: Partial<DemoConfig>;
+  demo?: FileDemoConfig;
 }
 
 export class ConfigError extends Error {
@@ -70,6 +88,15 @@ const DEFAULTS: Omit<AppConfig, "configPath" | "dataDir" | "dataPath" | "platfor
     connectDelayMs: 450,
     replyDelayMs: 1800,
     ambientIntervalMs: 75_000,
+    ai: {
+      enabled: false,
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "qwen2.5:0.5b",
+      temperature: 0.8,
+      maxTokens: 96,
+      timeoutMs: 20_000,
+      history: 12,
+    },
   },
 };
 
@@ -197,7 +224,20 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<AppCo
   );
   if (color === "auto" && env.NO_COLOR !== undefined) color = "none";
 
-  const demo = {
+  const fileAi = fileConfig.demo?.ai;
+  const aiEnabled = env.PULSEWIRE_AI !== undefined
+    ? parseBoolean(env.PULSEWIRE_AI, "PULSEWIRE_AI")
+    : fileAi?.enabled ?? DEFAULTS.demo.ai.enabled;
+  const aiBaseUrl = validateAiBaseUrl(
+    env.PULSEWIRE_AI_BASE_URL ?? fileAi?.baseUrl ?? DEFAULTS.demo.ai.baseUrl,
+    env.PULSEWIRE_AI_BASE_URL !== undefined ? "PULSEWIRE_AI_BASE_URL" : "demo.ai.baseUrl",
+  );
+  const aiModel = validateAiModel(
+    env.PULSEWIRE_AI_MODEL ?? fileAi?.model ?? DEFAULTS.demo.ai.model,
+    env.PULSEWIRE_AI_MODEL !== undefined ? "PULSEWIRE_AI_MODEL" : "demo.ai.model",
+  );
+
+  const demo: DemoConfig = {
     connectDelayMs: env.PULSEWIRE_DEMO_CONNECT_DELAY_MS !== undefined
       ? parseNonNegativeInt(
         env.PULSEWIRE_DEMO_CONNECT_DELAY_MS,
@@ -221,6 +261,17 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<AppCo
         DEFAULTS.demo.ambientIntervalMs,
         "ambientIntervalMs",
       ),
+    ai: {
+      enabled: aiEnabled,
+      baseUrl: aiBaseUrl,
+      model: aiModel,
+      temperature: fileAi?.temperature ?? DEFAULTS.demo.ai.temperature,
+      maxTokens: fileAi?.maxTokens ?? DEFAULTS.demo.ai.maxTokens,
+      timeoutMs: env.PULSEWIRE_AI_TIMEOUT_MS !== undefined
+        ? parseBoundedInt(env.PULSEWIRE_AI_TIMEOUT_MS, "PULSEWIRE_AI_TIMEOUT_MS", 500, 120_000)
+        : fileAi?.timeoutMs ?? DEFAULTS.demo.ai.timeoutMs,
+      history: fileAi?.history ?? DEFAULTS.demo.ai.history,
+    },
   };
 
   return {
@@ -324,14 +375,19 @@ function validateFileConfig(value: unknown, configPath: string): FileConfig {
     if (!isRecord(value.demo)) {
       throw new ConfigError(`"demo" must be an object.`, { path: configPath });
     }
-    const allowedDemo = new Set(["connectDelayMs", "replyDelayMs", "ambientIntervalMs"]);
+    const allowedDemo = new Set([
+      "connectDelayMs",
+      "replyDelayMs",
+      "ambientIntervalMs",
+      "ai",
+    ]);
     for (const key of Object.keys(value.demo)) {
       if (!allowedDemo.has(key)) {
         throw new ConfigError(`Unknown demo configuration key "${key}".`, { path: configPath });
       }
     }
-    config.demo = {};
-    for (const key of allowedDemo) {
+    const demo: FileDemoConfig = {};
+    for (const key of ["connectDelayMs", "replyDelayMs", "ambientIntervalMs"] as const) {
       const field = value.demo[key];
       if (field === undefined) continue;
       if (typeof field !== "number" || !Number.isInteger(field) || field < 0) {
@@ -339,10 +395,146 @@ function validateFileConfig(value: unknown, configPath: string): FileConfig {
           path: configPath,
         });
       }
-      config.demo[key as keyof DemoConfig] = field;
+      demo[key] = field;
     }
+    if (value.demo.ai !== undefined) {
+      demo.ai = validateAiFileConfig(value.demo.ai, configPath);
+    }
+    config.demo = demo;
   }
   return config;
+}
+
+function validateAiFileConfig(
+  value: unknown,
+  configPath: string,
+): Partial<DemoAiConfig> {
+  if (!isRecord(value)) {
+    throw new ConfigError(`"demo.ai" must be an object.`, { path: configPath });
+  }
+  const allowed = new Set([
+    "enabled",
+    "baseUrl",
+    "model",
+    "temperature",
+    "maxTokens",
+    "timeoutMs",
+    "history",
+  ]);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw new ConfigError(`Unknown demo.ai configuration key "${key}".`, {
+        path: configPath,
+      });
+    }
+  }
+
+  const ai: Partial<DemoAiConfig> = {};
+  if (value.enabled !== undefined) {
+    if (typeof value.enabled !== "boolean") {
+      throw new ConfigError(`"demo.ai.enabled" must be true or false.`, { path: configPath });
+    }
+    ai.enabled = value.enabled;
+  }
+  if (value.baseUrl !== undefined) {
+    ai.baseUrl = validateAiBaseUrl(value.baseUrl, `"demo.ai.baseUrl"`, configPath);
+  }
+  if (value.model !== undefined) {
+    ai.model = validateAiModel(value.model, `"demo.ai.model"`, configPath);
+  }
+  if (value.temperature !== undefined) {
+    ai.temperature = validateAiNumber(
+      value.temperature,
+      `"demo.ai.temperature"`,
+      0,
+      2,
+      configPath,
+      false,
+    );
+  }
+  if (value.maxTokens !== undefined) {
+    ai.maxTokens = validateAiNumber(
+      value.maxTokens,
+      `"demo.ai.maxTokens"`,
+      1,
+      512,
+      configPath,
+      true,
+    );
+  }
+  if (value.timeoutMs !== undefined) {
+    ai.timeoutMs = validateAiNumber(
+      value.timeoutMs,
+      `"demo.ai.timeoutMs"`,
+      500,
+      120_000,
+      configPath,
+      true,
+    );
+  }
+  if (value.history !== undefined) {
+    ai.history = validateAiNumber(
+      value.history,
+      `"demo.ai.history"`,
+      1,
+      50,
+      configPath,
+      true,
+    );
+  }
+  return ai;
+}
+
+function validateAiBaseUrl(value: unknown, name: string, configPath?: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ConfigError(`${name} must be a non-empty http(s) URL.`, { path: configPath });
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value.trim());
+  } catch {
+    throw new ConfigError(`${name} must be a valid http(s) URL.`, { path: configPath });
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new ConfigError(`${name} must use http or https.`, { path: configPath });
+  }
+  if (parsed.username || parsed.password) {
+    throw new ConfigError(`${name} must not contain credentials.`, { path: configPath });
+  }
+  return value.trim();
+}
+
+function validateAiModel(value: unknown, name: string, configPath?: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ConfigError(`${name} must be a non-empty model name.`, { path: configPath });
+  }
+  const model = value.trim();
+  if (model.length > 100) {
+    throw new ConfigError(`${name} must be 100 characters or fewer.`, { path: configPath });
+  }
+  return model;
+}
+
+function validateAiNumber(
+  value: unknown,
+  name: string,
+  minimum: number,
+  maximum: number,
+  configPath: string | undefined,
+  integer: boolean,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new ConfigError(`${name} must be a number.`, { path: configPath });
+  }
+  if (integer && !Number.isInteger(value)) {
+    throw new ConfigError(`${name} must be an integer.`, { path: configPath });
+  }
+  if (value < minimum || value > maximum) {
+    throw new ConfigError(`${name} must be between ${minimum} and ${maximum}.`, {
+      path: configPath,
+    });
+  }
+  return value;
 }
 
 function resolveConfiguredPath(
@@ -391,6 +583,17 @@ function parseNonNegativeInt(value: string, name: string): number {
     throw new ConfigError(`${name} must be a non-negative integer.`);
   }
   return Number(value);
+}
+
+function parseBoundedInt(value: string, name: string, minimum: number, maximum: number): number {
+  if (!/^\d+$/.test(value.trim())) {
+    throw new ConfigError(`${name} must be a positive integer.`);
+  }
+  const parsed = Number(value);
+  if (parsed < minimum || parsed > maximum) {
+    throw new ConfigError(`${name} must be between ${minimum} and ${maximum}.`);
+  }
+  return parsed;
 }
 
 function validateDelay(value: number | undefined, fallback: number, name: string): number {

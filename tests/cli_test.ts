@@ -36,6 +36,12 @@ Deno.test("parseArgs supports every documented flag", () => {
     },
   );
   deepStrictEqual(parseArgs(["--no-color"]), { kind: "run", overrides: { color: "none" } });
+  deepStrictEqual(parseArgs(["--ai"]), { kind: "run", overrides: { ai: true } });
+  deepStrictEqual(parseArgs(["--no-ai"]), { kind: "run", overrides: { ai: false } });
+  deepStrictEqual(parseArgs(["--ai-model", "qwen3:0.6b"]), {
+    kind: "run",
+    overrides: { aiModel: "qwen3:0.6b", ai: true },
+  });
 });
 
 Deno.test("parseArgs recognizes metadata and maintenance commands", () => {
@@ -78,6 +84,7 @@ Deno.test("parseArgs rejects unknown or incomplete input", () => {
   assertError(parseArgs(["--provider"]), "--provider needs a value");
   assertError(parseArgs(["--config"]), "--config needs a file path");
   assertError(parseArgs(["--data-dir"]), "--data-dir needs a directory");
+  assertError(parseArgs(["--ai-model"]), "--ai-model needs a model name");
   assertError(parseArgs(["--color", "rainbow"]), "must be one of");
   assertError(parseArgs(["auth"]), "requires");
   assertError(parseArgs(["auth", "slack"]), "requires");
@@ -94,6 +101,13 @@ Deno.test("applyOverrides keeps provider precedence explicit", () => {
   const styled = applyOverrides(config(), { ascii: true, color: "none" });
   strictEqual(styled.ascii, true);
   strictEqual(styled.color, "none");
+  const ai = applyOverrides(config(), { ai: true });
+  strictEqual(ai.demo.ai.enabled, true);
+  const model = applyOverrides(config(), { aiModel: " qwen3:0.6b " });
+  strictEqual(model.demo.ai.enabled, true);
+  strictEqual(model.demo.ai.model, "qwen3:0.6b");
+  const off = applyOverrides(applyOverrides(config(), { ai: true }), { ai: false });
+  strictEqual(off.demo.ai.enabled, false);
 });
 
 Deno.test("help text documents providers, setup, and shortcuts", () => {
@@ -102,9 +116,10 @@ Deno.test("help text documents providers, setup, and shortcuts", () => {
   strictEqual(text.includes("auth google"), true);
   strictEqual(text.includes("googlechat"), true);
   strictEqual(text.includes("--print-config"), true);
+  strictEqual(text.includes("--ai"), true);
   strictEqual(text.includes("Ctrl+C"), true);
   strictEqual(text.includes("Search"), true);
-  strictEqual(text.includes("demo provider never contacts the network"), true);
+  strictEqual(text.includes("demo provider contacts nothing unless --ai is"), true);
 });
 
 Deno.test("color mode validation matches config values", () => {
@@ -131,6 +146,19 @@ function config(): AppConfig {
     ascii: false,
     color: "auto",
     platform: "linux",
-    demo: { connectDelayMs: 0, replyDelayMs: 0, ambientIntervalMs: 0 },
+    demo: {
+      connectDelayMs: 0,
+      replyDelayMs: 0,
+      ambientIntervalMs: 0,
+      ai: {
+        enabled: false,
+        baseUrl: "http://127.0.0.1:11434/v1",
+        model: "qwen2.5:0.5b",
+        temperature: 0.8,
+        maxTokens: 96,
+        timeoutMs: 20_000,
+        history: 12,
+      },
+    },
   };
 }

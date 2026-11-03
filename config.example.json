@@ -7,6 +7,15 @@
   "demo": {
     "connectDelayMs": 450,
     "replyDelayMs": 1800,
-    "ambientIntervalMs": 75000
+    "ambientIntervalMs": 75000,
+    "ai": {
+      "enabled": false,
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "model": "qwen2.5:0.5b",
+      "temperature": 0.8,
+      "maxTokens": 96,
+      "timeoutMs": 20000,
+      "history": 12
+    }
   }
 }

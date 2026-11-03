@@ -7,11 +7,12 @@ composer — but it runs entirely in your terminal.
 Two providers ship in the box:
 
 - **Local demo** (default): a persistent, clearly labelled demo workspace that never contacts the
-  network and needs no credentials.
+  network and needs no credentials. It can optionally generate replies with a tiny local model.
 - **Google Chat** (optional): a real client for the Google Chat REST API using your own Google
   Workspace account and OAuth client.
 
-The demo workspace is not connected to Google Chat. No demo message is ever sent anywhere.
+The demo workspace is not connected to Google Chat. No demo message is ever sent anywhere. With AI
+replies disabled (the default), the demo makes no network calls at all.
 
 ## Highlights
 
@@ -24,6 +25,8 @@ The demo workspace is not connected to Google Chat. No demo message is ever sent
 - Unicode box drawing and an optional ASCII-only mode
 - Truecolor, 256-color, and no-color output, plus `NO_COLOR` support
 - Zero runtime npm dependencies; one `deno compile` binary per platform
+- Optional local-AI demo replies through any OpenAI-compatible endpoint (Ollama, llama.cpp, LM
+  Studio)
 
 ## Requirements
 
@@ -71,6 +74,7 @@ The `Makefile` wraps the most useful tasks:
 | ------------------------- | ------------------------------------------- |
 | `make run` / `make start` | Start the TUI                               |
 | `make dev`                | Start the local demo provider               |
+| `make ai`                 | Start the demo with local AI replies        |
 | `make preview`            | Print a static preview                      |
 | `make test`               | Run the test suite                          |
 | `make verify`             | Run formatting, lint, type-check, and tests |
@@ -98,6 +102,9 @@ installation is required there.
 The first run seeds the Juniper Studio demo workspace under your local data directory. Sending a
 message in the demo may produce a simulated reply after a short delay. Disable this with
 `"simulateActivity": false` or `PULSEWIRE_SIMULATE_ACTIVITY=false`.
+
+The replies are canned by default. To have a tiny local model write them in character, run `make ai`
+(or `./run.sh --ai`). See [Local AI replies](#local-ai-replies-in-the-demo).
 
 To wipe the demo and start over:
 
@@ -155,7 +162,16 @@ Start from [`config.example.json`](config.example.json):
   "demo": {
     "connectDelayMs": 450,
     "replyDelayMs": 1800,
-    "ambientIntervalMs": 75000
+    "ambientIntervalMs": 75000,
+    "ai": {
+      "enabled": false,
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "model": "qwen2.5:0.5b",
+      "temperature": 0.8,
+      "maxTokens": 96,
+      "timeoutMs": 20000,
+      "history": 12
+    }
   }
 }
 ```
@@ -171,6 +187,13 @@ Start from [`config.example.json`](config.example.json):
 | `demo.connectDelayMs`    | non-negative integer                   | Simulated connection delay          |
 | `demo.replyDelayMs`      | non-negative integer                   | Delay before a simulated demo reply |
 | `demo.ambientIntervalMs` | non-negative integer                   | Background demo activity interval   |
+| `demo.ai.enabled`        | boolean                                | Use a local model for demo replies  |
+| `demo.ai.baseUrl`        | http(s) URL                            | OpenAI-compatible API base URL      |
+| `demo.ai.model`          | string                                 | Model name, e.g. `qwen2.5:0.5b`     |
+| `demo.ai.temperature`    | number, 0–2                            | Sampling temperature                |
+| `demo.ai.maxTokens`      | integer, 1–512                         | Reply length limit                  |
+| `demo.ai.timeoutMs`      | integer, 500–120000                    | Request timeout                     |
+| `demo.ai.history`        | integer, 1–50                          | Recent messages sent as context     |
 
 Environment variables override the config file, and command-line flags override both:
 
@@ -186,6 +209,10 @@ Environment variables override the config file, and command-line flags override 
 | `PULSEWIRE_DEMO_CONNECT_DELAY_MS`    | Demo connection delay       |
 | `PULSEWIRE_DEMO_REPLY_DELAY_MS`      | Demo reply delay            |
 | `PULSEWIRE_DEMO_AMBIENT_INTERVAL_MS` | Demo ambient interval       |
+| `PULSEWIRE_AI`                       | Enable local AI replies     |
+| `PULSEWIRE_AI_BASE_URL`              | OpenAI-compatible base URL  |
+| `PULSEWIRE_AI_MODEL`                 | Local model name            |
+| `PULSEWIRE_AI_TIMEOUT_MS`            | AI request timeout          |
 | `NO_COLOR`                           | Disable auto color when set |
 
 Inspect the fully resolved configuration without revealing secrets:
@@ -201,6 +228,62 @@ deno run --allow-read --allow-write --allow-env --allow-sys src/main.ts --print-
 - The OAuth token cache is written with restrictive permissions where the platform supports it (mode
   `0600` on Linux).
 - `.env`, local config files, token caches, and build output are ignored by Git.
+
+## Local AI replies in the demo
+
+The demo normally uses canned replies. You can point it at a tiny local model instead, so the
+Juniper Studio teammates answer in character. Pulsewire speaks the OpenAI chat-completions protocol,
+so any compatible local server works. No model is bundled and there are no new dependencies: the
+model runs in its own process.
+
+### Ollama (simplest)
+
+```sh
+ollama pull qwen2.5:0.5b
+ollama serve              # usually already running
+./run.sh --ai             # or: make ai
+```
+
+`qwen2.5:0.5b` is the default. It is small (roughly 400 MB quantized) and fast enough for one-line
+banter. Other good choices are `qwen3:0.6b` and `smollm2:360m`:
+
+```sh
+./run.sh --ai-model qwen3:0.6b
+```
+
+### Other OpenAI-compatible servers
+
+llama.cpp's `llama-server` exposes the same API:
+
+```sh
+llama-server -hf Qwen/Qwen2.5-0.5B-Instruct-GGUF --port 8080
+PULSEWIRE_AI_BASE_URL=http://127.0.0.1:8080/v1 ./run.sh --ai
+```
+
+LM Studio, LocalAI, and similar tools work too. Point `demo.ai.baseUrl` at the server's `/v1`
+endpoint (or directly at `/v1/chat/completions`).
+
+| Flag                | Effect                                   |
+| ------------------- | ---------------------------------------- |
+| `--ai`              | Enable local AI replies for the demo     |
+| `--ai-model <name>` | Enable AI replies with a specific model  |
+| `--no-ai`           | Disable AI replies enabled in the config |
+
+### Behavior and safety
+
+- AI replies are **off by default**; with them off, the demo makes no network calls.
+- Each reply is generated from the last `demo.ai.history` messages, the conversation topic, and a
+  short persona for the teammate who is replying.
+- The typing indicator stays visible while the model thinks. Output is cleaned up: Markdown, name
+  prefixes, and extra whitespace are removed, and the reply is length-capped.
+- If the server is down, slow, or returns something unusable, Pulsewire shows one warning and falls
+  back to the canned replies so the demo never stalls.
+- The header shows `DEMO · AI` while AI replies are on. The workspace is still clearly a demo and is
+  never connected to Google Chat.
+- Requests go only to the endpoint you configure. The recent transcript is sent there as prompt
+  context: with the default localhost URL it stays on your machine, but a remote `baseUrl` means
+  message text leaves your machine. Do not point it at a service you do not trust.
+- Small models can be wrong or repetitive; reply quality is a demo feature, not a factual source.
 
 ## Google Chat setup
 
@@ -310,6 +393,7 @@ src/
     factory.ts         Provider/session selection
     demo-provider.ts   Local demo transport and persistence
     demo-data.ts       Deterministic demo seed and validation
+    ai.ts              Optional OpenAI-compatible demo replies
   google/
     settings.ts        Google env/path settings and scopes
     oauth.ts           Loopback OAuth, token refresh, token storage

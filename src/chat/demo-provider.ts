@@ -1,6 +1,7 @@
 // deno-lint-ignore-file require-await
 import { dirname } from "node:path";
 import { ChatError, errorMessage, isChatError } from "./errors.ts";
+import type { AiReplyRequest, AiResponder } from "./ai.ts";
 import {
   cloneDemoData,
   type DemoData,
@@ -8,6 +9,7 @@ import {
   seedDemoData,
   type StoredConversation,
   type StoredMessage,
+  type StoredUser,
 } from "./demo-data.ts";
 import type {
   ChatProvider,
@@ -29,6 +31,7 @@ export interface DemoProviderOptions {
   connectDelayMs?: number;
   replyDelayMs?: number;
   ambientIntervalMs?: number;
+  ai?: AiResponder;
   now?: () => Date;
 }
 
@@ -46,6 +49,7 @@ export class DemoProvider implements ChatProvider {
   readonly id = "demo";
   readonly label = "Local demo";
   readonly demo = true;
+  readonly ai: boolean;
 
   private readonly dataPath: string;
   private readonly displayName: string;
@@ -53,6 +57,7 @@ export class DemoProvider implements ChatProvider {
   private readonly connectDelayMs: number;
   private readonly replyDelayMs: number;
   private readonly ambientIntervalMs: number;
+  private readonly aiResponder?: AiResponder;
   private readonly now: () => Date;
   private readonly listeners = new Set<ProviderListener>();
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
@@ -62,6 +67,7 @@ export class DemoProvider implements ChatProvider {
   private connected = false;
   private persistChain: Promise<void> = Promise.resolve();
   private ambientTimer?: ReturnType<typeof setTimeout>;
+  private aiWarningShown = false;
   private placeholderUser: User;
 
   constructor(options: DemoProviderOptions) {
@@ -71,6 +77,8 @@ export class DemoProvider implements ChatProvider {
     this.connectDelayMs = options.connectDelayMs ?? 0;
     this.replyDelayMs = options.replyDelayMs ?? 1_800;
     this.ambientIntervalMs = options.ambientIntervalMs ?? 75_000;
+    this.aiResponder = options.ai;
+    this.ai = options.ai !== undefined;
     this.now = options.now ?? (() => new Date());
     this.placeholderUser = {
       id: "u-self",
@@ -328,13 +336,15 @@ export class DemoProvider implements ChatProvider {
 
   private workspaceInfo(): WorkspaceInfo {
     const currentUser = this.currentUser;
-    return {
+    const info: WorkspaceInfo = {
       name: WORKSPACE_NAME,
       providerId: this.id,
       providerLabel: this.label,
       demo: this.demo,
       currentUser,
     };
+    if (this.aiResponder) info.note = `AI replies · ${this.aiResponder.label}`;
+    return info;
   }
 
   private hydrateUser(data: DemoData, userId: string): User {
@@ -503,44 +513,108 @@ export class DemoProvider implements ChatProvider {
       active: true,
     });
 
-    const replyTimer = setTimeout(async () => {
+    const replyTimer = setTimeout(() => {
       this.timers.delete(replyTimer);
-      if (!this.connected) return;
-      try {
-        const current = this.requireData();
-        const body = simulatedReply(source.body, this.messageCountFor(current, conversationId));
-        const createdAt = this.nowIso();
-        const reply: StoredMessage = {
-          id: `m-${crypto.randomUUID()}`,
-          conversationId,
-          authorId,
-          body,
-          createdAt,
-          ...(source.replyToId || this.isThreadRoot(current, source)
-            ? { replyToId: this.rootOf(current, source).id }
-            : {}),
-        };
-        current.messages[reply.id] = reply;
-        current.updatedAt = createdAt;
-        await this.persist();
-        this.emit({
-          type: "typing",
-          conversationId,
-          user: this.hydrateUser(current, authorId),
-          active: false,
-        });
-        this.emit({
-          type: "message-created",
-          conversationId,
-          message: this.hydrateMessage(current, reply),
-        });
-      } catch (error) {
-        this.emit({ type: "error", message: `Simulated reply failed: ${errorMessage(error)}` });
-      } finally {
-        this.pendingReplies.delete(conversationId);
-      }
+      void this.deliverSimulatedReply(conversationId, source, authorId);
     }, this.replyDelayMs);
     this.timers.add(replyTimer);
+  }
+
+  private async deliverSimulatedReply(
+    conversationId: string,
+    source: StoredMessage,
+    authorId: string,
+  ): Promise<void> {
+    try {
+      if (!this.connected) return;
+      const current = this.requireData();
+      const conversation = current.conversations[conversationId];
+      const author = current.users[authorId];
+      if (!conversation || !author) return;
+
+      let body = simulatedReply(source.body, this.messageCountFor(current, conversationId));
+      if (this.aiResponder) {
+        const result = await this.aiResponder.reply(
+          this.aiRequest(current, conversation, author, conversationId),
+        );
+        if (result.ok) body = result.text;
+        else this.noteAiFailure(result.reason);
+      }
+
+      // The provider may have been disposed or reset while the model was thinking.
+      if (!this.connected) return;
+      const latest = this.requireData();
+      const latestConversation = latest.conversations[conversationId];
+      const latestAuthor = latest.users[authorId];
+      if (!latestConversation || !latestAuthor) return;
+
+      const createdAt = this.nowIso();
+      const reply: StoredMessage = {
+        id: `m-${crypto.randomUUID()}`,
+        conversationId,
+        authorId,
+        body,
+        createdAt,
+        ...(source.replyToId || this.isThreadRoot(latest, source)
+          ? { replyToId: this.rootOf(latest, source).id }
+          : {}),
+      };
+      latest.messages[reply.id] = reply;
+      latest.updatedAt = createdAt;
+      await this.persist();
+      this.emit({
+        type: "typing",
+        conversationId,
+        user: this.hydrateUser(latest, authorId),
+        active: false,
+      });
+      this.emit({
+        type: "message-created",
+        conversationId,
+        message: this.hydrateMessage(latest, reply),
+      });
+    } catch (error) {
+      this.emit({ type: "error", message: `Simulated reply failed: ${errorMessage(error)}` });
+    } finally {
+      this.pendingReplies.delete(conversationId);
+    }
+  }
+
+  private aiRequest(
+    data: DemoData,
+    conversation: StoredConversation,
+    author: StoredUser,
+    conversationId: string,
+  ): AiReplyRequest {
+    const messages = this.messagesForStored(data, conversationId)
+      .filter((message) => !message.deletedAt && message.body.trim())
+      .map((message) => ({
+        authorId: message.authorId,
+        authorName: data.users[message.authorId]?.displayName ?? "Someone",
+        body: message.body,
+      }));
+
+    return {
+      conversation: {
+        name: conversation.name,
+        kind: conversation.kind,
+        ...(conversation.topic ? { topic: conversation.topic } : {}),
+      },
+      members: conversation.memberIds
+        .map((memberId) => data.users[memberId]?.displayName)
+        .filter((name): name is string => Boolean(name)),
+      persona: { id: author.id, displayName: author.displayName, handle: author.handle },
+      messages,
+    };
+  }
+
+  private noteAiFailure(reason: string): void {
+    if (this.aiWarningShown) return;
+    this.aiWarningShown = true;
+    this.emit({
+      type: "error",
+      message: `Local AI replies are unavailable (${reason}). Using canned demo replies.`,
+    });
   }
 
   private isThreadRoot(data: DemoData, message: StoredMessage): boolean {

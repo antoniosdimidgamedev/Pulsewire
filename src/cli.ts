@@ -9,6 +9,8 @@ export interface RunOverrides {
   color?: ColorMode;
   configPath?: string;
   dataDir?: string;
+  ai?: boolean;
+  aiModel?: string;
 }
 
 export type Command =
@@ -55,6 +57,25 @@ export function parseArgs(argv: string[]): Command {
       case "--demo":
         overrides.demo = true;
         break;
+      case "--ai":
+        overrides.ai = true;
+        break;
+      case "--no-ai":
+        overrides.ai = false;
+        break;
+      case "--ai-model": {
+        const value = argv[++index];
+        if (!value || !value.trim()) {
+          return { kind: "error", message: "--ai-model needs a model name." };
+        }
+        const model = value.trim();
+        if (model.length > 100) {
+          return { kind: "error", message: "--ai-model must be 100 characters or fewer." };
+        }
+        overrides.aiModel = model;
+        overrides.ai = true;
+        break;
+      }
       case "--ascii":
         overrides.ascii = true;
         break;
@@ -159,6 +180,9 @@ Usage:
 
 Options:
   --demo                         Force the local demo provider
+  --ai                           Enable local AI replies in the demo
+  --ai-model <name>              Enable AI replies with a specific model
+  --no-ai                        Disable AI replies from the config file
   --provider <name>              demo (default) or googlechat
   --config <file>                Use a specific config.json
   --data-dir <dir>               Override the local data directory
@@ -174,6 +198,8 @@ Environment:
   PULSEWIRE_CONFIG, PULSEWIRE_PROVIDER, PULSEWIRE_DISPLAY_NAME,
   PULSEWIRE_DATA_DIR, PULSEWIRE_COLOR, PULSEWIRE_ASCII,
   PULSEWIRE_SIMULATE_ACTIVITY
+  PULSEWIRE_AI, PULSEWIRE_AI_BASE_URL, PULSEWIRE_AI_MODEL,
+  PULSEWIRE_AI_TIMEOUT_MS
   GOOGLE_CHAT_CREDENTIALS_FILE, GOOGLE_CHAT_CLIENT_ID,
   GOOGLE_CHAT_CLIENT_SECRET, GOOGLE_CHAT_TOKEN_FILE,
   GOOGLE_CHAT_ACCESS_TOKEN, GOOGLE_CHAT_USER_RESOURCE,
@@ -185,7 +211,8 @@ Shortcuts:
   r  Reply thread   t  Open thread   e  Edit message   d  Delete
   s or /  Search    g / G  Top/bottom                [ ]  Prev/next chat
 
-Google Chat is optional. The demo provider never contacts the network.
+Google Chat is optional. The demo provider contacts nothing unless --ai is
+enabled, and then it only calls the local model endpoint you configure.
 `;
 }
 
@@ -199,5 +226,10 @@ export function applyOverrides(config: AppConfig, overrides: RunOverrides): AppC
   else if (overrides.provider) config.provider = overrides.provider.trim();
   if (overrides.ascii) config.ascii = true;
   if (overrides.color) config.color = overrides.color;
+  if (overrides.ai !== undefined) config.demo.ai.enabled = overrides.ai;
+  if (overrides.aiModel) {
+    config.demo.ai.model = overrides.aiModel.trim();
+    config.demo.ai.enabled = true;
+  }
   return config;
 }

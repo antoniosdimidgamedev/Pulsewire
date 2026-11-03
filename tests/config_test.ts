@@ -215,5 +215,81 @@ Deno.test("Windows config paths are parsed with win32 semantics", async () => {
     connectDelayMs: 450,
     replyDelayMs: 1_800,
     ambientIntervalMs: 75_000,
+    ai: {
+      enabled: false,
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "qwen2.5:0.5b",
+      temperature: 0.8,
+      maxTokens: 96,
+      timeoutMs: 20_000,
+      history: 12,
+    },
   });
+});
+
+Deno.test("local AI replies are opt-in and configurable", async () => {
+  const defaults = await load({ platform: "linux", env: {} });
+  strictEqual(defaults.demo.ai.enabled, false);
+  strictEqual(defaults.demo.ai.model, "qwen2.5:0.5b");
+  strictEqual(defaults.demo.ai.baseUrl, "http://127.0.0.1:11434/v1");
+
+  const fromFile = await load({
+    platform: "linux",
+    env: {},
+    readTextFile: async () =>
+      JSON.stringify({
+        demo: {
+          ai: {
+            enabled: true,
+            baseUrl: "http://127.0.0.1:8080/v1",
+            model: "qwen3:0.6b",
+            temperature: 0.5,
+            maxTokens: 64,
+            timeoutMs: 5_000,
+            history: 8,
+          },
+        },
+      }),
+  });
+  strictEqual(fromFile.demo.ai.enabled, true);
+  strictEqual(fromFile.demo.ai.baseUrl, "http://127.0.0.1:8080/v1");
+  strictEqual(fromFile.demo.ai.model, "qwen3:0.6b");
+  strictEqual(fromFile.demo.ai.temperature, 0.5);
+  strictEqual(fromFile.demo.ai.maxTokens, 64);
+  strictEqual(fromFile.demo.ai.timeoutMs, 5_000);
+  strictEqual(fromFile.demo.ai.history, 8);
+
+  const fromEnv = await load({
+    platform: "linux",
+    env: {
+      PULSEWIRE_AI: "yes",
+      PULSEWIRE_AI_BASE_URL: "http://localhost:11434/v1",
+      PULSEWIRE_AI_MODEL: "smollm2:360m",
+      PULSEWIRE_AI_TIMEOUT_MS: "3000",
+    },
+  });
+  strictEqual(fromEnv.demo.ai.enabled, true);
+  strictEqual(fromEnv.demo.ai.baseUrl, "http://localhost:11434/v1");
+  strictEqual(fromEnv.demo.ai.model, "smollm2:360m");
+  strictEqual(fromEnv.demo.ai.timeoutMs, 3_000);
+});
+
+Deno.test("invalid AI settings are rejected with helpful errors", async () => {
+  const bad = (demo: Record<string, unknown>) => ({
+    platform: "linux",
+    env: {},
+    readTextFile: async () => JSON.stringify({ demo: { ai: demo } }),
+  });
+  await rejects(load(bad({ baseUrl: "ftp://localhost/model" })), /must use http or https/);
+  await rejects(load(bad({ baseUrl: "not a url" })), /valid http\(s\) URL/);
+  await rejects(load(bad({ model: "   " })), /non-empty model name/);
+  await rejects(load(bad({ temperature: 3 })), /between 0 and 2/);
+  await rejects(load(bad({ maxTokens: 0 })), /between 1 and 512/);
+  await rejects(load(bad({ timeoutMs: 10 })), /between 500 and 120000/);
+  await rejects(load(bad({ history: 0 })), /between 1 and 50/);
+  await rejects(load(bad({ unknown: true })), /Unknown demo.ai configuration key/);
+  await rejects(
+    load({ platform: "linux", env: { PULSEWIRE_AI: "maybe" } }),
+    /must be true\/false/,
+  );
 });

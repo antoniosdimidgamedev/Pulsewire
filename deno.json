@@ -4,7 +4,7 @@
   "exports": "./src/main.ts",
   "tasks": {
     "start": "deno run --allow-read --allow-write --allow-env --allow-sys --allow-net --allow-run src/main.ts",
-    "dev": "deno run --allow-read --allow-write --allow-env --allow-sys src/main.ts --demo",
+    "dev": "deno run --allow-read --allow-write --allow-env --allow-sys --allow-net src/main.ts --demo",
     "test": "deno test --allow-read --allow-write --allow-env --allow-sys tests/",
     "check": "deno check src/main.ts scripts/preview.ts tests/",
     "lint": "deno lint src tests scripts",

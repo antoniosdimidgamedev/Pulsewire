@@ -16,6 +16,9 @@ run start: ## Start the TUI with your resolved configuration
 dev: ## Start the TUI with the local demo provider
 	deno task dev
 
+ai: ## Start the demo with local AI replies (Ollama or compatible server)
+	deno task start --demo --ai
+
 preview: ## Print a static preview of the interface
 	deno task preview
 

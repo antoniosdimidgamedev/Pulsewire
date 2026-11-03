@@ -42,6 +42,14 @@ Deno.test("thread viewport leaves room for the thread title", () => {
   strictEqual(threadViewportHeight(layout), layout.bodyContentHeight - 1);
 });
 
+Deno.test("the demo header marks AI replies when they are enabled", () => {
+  const withAi: UiState = { ...sampleUiState(), ai: true };
+  const line = renderFrame(withAi, { width: 100, height: 30 }, plain)[0] ?? "";
+  strictEqual(stripAnsi(line).includes("DEMO · AI"), true);
+  const withoutAi = renderFrame(sampleUiState(), { width: 100, height: 30 }, plain)[0] ?? "";
+  strictEqual(stripAnsi(withoutAi).includes("DEMO · AI"), false);
+});
+
 Deno.test("renderFrame always fills exactly the viewport", () => {
   const state = sampleUiState();
   for (

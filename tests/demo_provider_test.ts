@@ -1,5 +1,6 @@
 import { deepStrictEqual, rejects, strictEqual } from "node:assert/strict";
 import { join } from "node:path";
+import type { AiReplyRequest } from "../src/chat/ai.ts";
 import { DemoProvider } from "../src/chat/demo-provider.ts";
 import type { ProviderEvent } from "../src/chat/types.ts";
 import { ChatError } from "../src/chat/errors.ts";
@@ -230,3 +231,127 @@ Deno.test("operations before connect return not_connected", async () => {
     await Deno.remove(dir, { recursive: true }).catch(() => undefined);
   }
 });
+
+Deno.test("demo replies can come from a local AI responder", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "pulsewire-demo-ai-" });
+  const dataPath = join(dir, "demo.json");
+  const requests: AiReplyRequest[] = [];
+  const provider = new DemoProvider({
+    dataPath,
+    displayName: "Alex Rivera",
+    simulateActivity: true,
+    connectDelayMs: 0,
+    replyDelayMs: 0,
+    ai: {
+      label: "test-model",
+      model: "test-model",
+      reply: (request) => {
+        requests.push(request);
+        return Promise.resolve({ ok: true, text: "Generated in character." });
+      },
+    },
+    now: () => FIXED,
+  });
+  const events: ProviderEvent[] = [];
+  provider.subscribe((event) => events.push(event));
+
+  try {
+    const workspace = await provider.connect();
+    strictEqual(workspace.note, "AI replies · test-model");
+    strictEqual(provider.ai, true);
+
+    const sent = await provider.sendMessage({
+      conversationId: "c-dm-maya",
+      body: "What should we polish next?",
+    });
+    const reply = await waitForReply(events, "c-dm-maya", 0, sent.id);
+    strictEqual(reply.body, "Generated in character.");
+    strictEqual(reply.author.id, "u-maya");
+    strictEqual(requests.length, 1);
+    strictEqual(requests[0]?.persona.handle, "maya");
+    strictEqual(requests[0]?.conversation.name, "Maya Chen");
+    strictEqual(requests[0]?.messages.at(-1)?.body, "What should we polish next?");
+    strictEqual(
+      events.some((event) => event.type === "typing" && event.active === true),
+      true,
+    );
+    strictEqual(
+      events.some((event) => event.type === "typing" && event.active === false),
+      true,
+    );
+    const persisted = await provider.getMessages("c-dm-maya");
+    strictEqual(persisted.some((message) => message.body === "Generated in character."), true);
+  } finally {
+    await provider.dispose();
+    await Deno.remove(dir, { recursive: true }).catch(() => undefined);
+  }
+});
+
+Deno.test("AI failures fall back to canned replies with one warning", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "pulsewire-demo-ai-" });
+  const provider = new DemoProvider({
+    dataPath: join(dir, "demo.json"),
+    displayName: "Alex Rivera",
+    simulateActivity: true,
+    connectDelayMs: 0,
+    replyDelayMs: 0,
+    ai: {
+      label: "offline-model",
+      model: "offline-model",
+      reply: () => Promise.resolve({ ok: false, reason: "connection refused" }),
+    },
+  });
+  const events: ProviderEvent[] = [];
+  provider.subscribe((event) => events.push(event));
+
+  try {
+    await provider.connect();
+    const first = await provider.sendMessage({
+      conversationId: "c-dm-ivo",
+      body: "Are the builds green?",
+    });
+    const firstReply = await waitForReply(events, "c-dm-ivo", 0, first.id);
+    strictEqual(firstReply.body.length > 0, true);
+    strictEqual(firstReply.body.includes("Generated"), false);
+
+    const second = await provider.sendMessage({
+      conversationId: "c-dm-ivo",
+      body: "Any blockers?",
+    });
+    await waitForReply(events, "c-dm-ivo", 1, second.id);
+    const warnings = events.filter((event) =>
+      event.type === "error" && event.message.includes("Local AI replies are unavailable")
+    );
+    strictEqual(warnings.length, 1);
+    if (warnings[0]?.type === "error") {
+      strictEqual(warnings[0].message.includes("connection refused"), true);
+      strictEqual(warnings[0].message.includes("canned demo replies"), true);
+    }
+  } finally {
+    await provider.dispose();
+    await Deno.remove(dir, { recursive: true }).catch(() => undefined);
+  }
+});
+
+async function waitForReply(
+  events: ProviderEvent[],
+  conversationId: string,
+  previousReplies: number,
+  sentId: string,
+): Promise<import("../src/chat/types.ts").Message> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const replies = events.filter((event) =>
+      event.type === "message-created" &&
+      event.conversationId === conversationId &&
+      event.message.id !== sentId &&
+      event.message.author.id !== "u-self"
+    );
+    if (replies.length > previousReplies) {
+      const latest = replies[replies.length - 1];
+      if (latest?.type === "message-created") return latest.message;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("Timed out waiting for a simulated reply.");
+}

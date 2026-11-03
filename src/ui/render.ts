@@ -54,6 +54,7 @@ export interface UiState {
   phase: "loading" | "ready" | "error";
   providerLabel: string;
   demo: boolean;
+  ai?: boolean;
   error?: string;
   errorHint?: string;
   workspace?: WorkspaceInfo;
@@ -273,7 +274,11 @@ function headerLine(state: UiState, width: number, theme: Theme): string {
   }
 
   const badge = state.demo
-    ? theme.paint(" DEMO ", { fg: "#0f172a", bg: "#fbbf24", bold: true })
+    ? theme.paint(state.ai ? " DEMO · AI " : " DEMO ", {
+      fg: "#0f172a",
+      bg: "#fbbf24",
+      bold: true,
+    })
     : theme.paint(` ${state.providerLabel.toUpperCase()} `, {
       fg: "#0f172a",
       bg: "#5eead4",
