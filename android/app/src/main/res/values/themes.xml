@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="pulse_background">#FFF8FAF9</color>
+    <color name="pulse_primary">#FF0F766E</color>
+    <color name="pulse_status_bar">#FFF1F5F4</color>
+
+    <style name="Theme.Pulsewire" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/pulse_background</item>
+        <item name="android:statusBarColor">@color/pulse_status_bar</item>
+        <item name="android:navigationBarColor">@color/pulse_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/pulse_primary</item>
+    </style>
+</resources>

@@ -1,4 +1,4 @@
-.PHONY: help run start dev ai ai-setup ai-serve ai-status ai-clean preview test check lint fmt fmt-check verify build build-linux build-windows clean
+.PHONY: help run start dev ai ai-setup ai-serve ai-status ai-clean preview test check lint fmt fmt-check verify build build-linux build-windows android-build android-check clean
 
 # Default target shows the available commands.
 .DEFAULT_GOAL := help
@@ -62,6 +62,12 @@ build-linux: ## Build the Linux binary at dist/pulsewire-linux
 
 build-windows: ## Build the Windows binary at dist/pulsewire.exe
 	deno task compile:windows
+
+android-build: ## Build the Android debug APK
+	cd android && ./gradlew --no-daemon :app:assembleDebug
+
+android-check: ## Run Android lint and JVM unit tests
+	cd android && ./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest
 
 clean: ## Remove build output
 	deno eval 'await Deno.remove("dist", { recursive: true }).catch(() => undefined)'

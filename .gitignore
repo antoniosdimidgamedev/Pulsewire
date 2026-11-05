@@ -16,6 +16,17 @@ google-client.json
 dist/
 coverage/
 
+# Android build output and local SDK configuration
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+*.apk
+*.aab
+
 # Editor / OS noise
 .DS_Store
 Thumbs.db

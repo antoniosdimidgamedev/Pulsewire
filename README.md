@@ -4,10 +4,10 @@ Pulsewire is an original, self-hosted team messaging app with a keyboard-driven 
 real HTTP backend, a SQLite database, and a browser-based management dashboard. Conversations,
 membership, messages, read state, and search all live on the server; the terminal is only a client.
 
-The current deliverable is the **Linux terminal client**, the **self-hosted server**, and the
-**management dashboard**. The same TypeScript client also compiles into a Windows executable, but
-Windows and Android are documented future targets rather than separate supported clients for this
-milestone.
+The current deliverable is the **Linux terminal client**, the **self-hosted server**, the
+**management dashboard**, and a **native Android client**. The same TypeScript client also compiles
+into a Windows executable, but Windows remains a build target rather than a separately supported
+client for this milestone.
 
 What ships in this repository:
 
@@ -15,6 +15,9 @@ What ships in this repository:
   authorization checks. It is the normal way to use Pulsewire.
 - **Management dashboard** (`/admin`): an original HTML, CSS, and JavaScript control panel served by
   the same server for accounts, conversations, moderation, and activity review.
+- **Android client** (`android/`): a native Kotlin/Jetpack Compose app for Android 8.0 (API 26) and
+  newer. It signs in to your server, lists conversations, pages through history, sends and edits
+  messages, searches, manages membership, and updates your profile.
 - **Offline demo** (`--demo`): a clearly labelled local sandbox that contacts nothing unless you
   enable its optional local AI replies. It is for trying the interface, not for online messaging.
 - **Google Chat** (`--provider googlechat`): the original optional integration. It is kept for
@@ -35,17 +38,19 @@ Pulsewire is not affiliated with Google. It does not use Google Chat branding, l
   ASCII mode, colour modes, and small-terminal layouts.
 - A management dashboard with a server overview, account administration, conversation inspection,
   moderation controls, activity review, loading/empty/error states, and a responsive layout.
+- A native Android client with authentication, conversation list, message history, send/edit/delete,
+  search, read state, membership management, profile editing, and Keystore-backed session storage.
 - Non-interactive commands for scripts and remote shells.
 - Automated tests for persistence, authorization, HTTP behaviour, the network provider, dashboard
-  admin rules and assets, and CLI commands.
+  admin rules and assets, CLI commands, and the Android API client.
 
 ## Architecture at a glance
 
 ```
 Terminal UI / commands ─┐
-                        ├── ChatProvider / JSON over HTTP ──┐
-Management dashboard ───┘                                  │
-                                                           ▼
+Management dashboard ───┼── JSON over HTTP (/v1, /admin) ──┐
+Android client ─────────┘                                   │
+                                                            ▼
                                         ┌──────────────────────────────┐
                                         │ HTTP API + admin routes      │
                                         ├──────────────────────────────┤
@@ -55,8 +60,9 @@ Management dashboard ───┘                                  │
                                         └──────────────────────────────┘
 ```
 
-The UI never talks to SQLite or HTTP directly. It uses the same `ChatProvider` interface as the
-offline demo, so rendering, keyboard handling, and search behaviour are shared. See
+The terminal UI never talks to SQLite or HTTP directly. It uses the same `ChatProvider` interface as
+the offline demo, so rendering, keyboard handling, and search behaviour are shared. The dashboard
+and Android client are separate consumers of the same `/v1` contract. See
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layering, data model, authorization rules,
 and event strategy.
 
@@ -65,6 +71,8 @@ and event strategy.
 - [Deno](https://deno.com/) 2.x. No `npm install`, bundler, or external database server is needed.
 - Linux or macOS for the primary terminal experience. SQLite comes from Deno's built-in
   `node:sqlite`.
+- For the Android client: JDK 17 and Android SDK platform 35 with build-tools 35.0.0, or Android
+  Studio. The Gradle wrapper is included.
 
 ## Quick start
 
@@ -167,6 +175,29 @@ PULSEWIRE_ADMIN_HANDLE=alice deno task server
 
 If no administrator exists, the oldest account is promoted automatically at startup. The server does
 not start if `PULSEWIRE_ADMIN_HANDLE` names an account that does not exist.
+
+### 6. Use the Android app on your LAN
+
+Bind the server to a private interface so a phone can reach it:
+
+```sh
+deno task server --host 0.0.0.0 --port 8787
+```
+
+Find the computer's LAN address with `hostname -I`, allow port `8787` through the host firewall, and
+confirm `http://<LAN-IP>:8787/health` opens from the phone's browser. Then build and install the
+client:
+
+```sh
+cd android
+./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Enter `http://<LAN-IP>:8787` in the app. The Android Studio emulator can use `http://10.0.2.2:8787`
+instead. Plain HTTP is allowed for trusted LANs only; use HTTPS for any network you do not control.
+See [`android/README.md`](android/README.md) for build requirements, first-run steps, and the
+verified scope.
 
 For the offline demo instead:
 
@@ -340,7 +371,8 @@ the SQLite file (including WAL sidecars), and restrict access to the data direct
 
 ## HTTP API
 
-The API is versioned under `/v1` and is designed for future native clients. The main groups are:
+The API is versioned under `/v1` and is consumed by the terminal client, the dashboard, and the
+native Android client. The main groups are:
 
 - `/v1/auth/*` — register, login, logout
 - `/v1/me` — current profile and profile updates
@@ -380,27 +412,38 @@ make build-linux     # dist/pulsewire-linux
 make build-windows   # dist/pulsewire.exe (compiles; Windows is not a supported milestone yet)
 ```
 
+Android checks use the committed Gradle wrapper:
+
+```sh
+make android-build   # debug APK
+make android-check   # lint and JVM unit tests
+```
+
 The compile tasks include `web/admin` via `--include web`, so a compiled binary can serve the
 dashboard without the repository checkout. `deno task fmt` and `deno task fmt:check` also cover the
 dashboard files.
 
 ## Windows and Android
 
-The current supported client is the Linux terminal. The service boundary is the `/v1` REST API, so
-future clients do not need to change the database or messaging rules.
+The supported clients are the Linux terminal and the native Android app. The service boundary is the
+`/v1` REST API, so clients do not need to change the database or messaging rules.
 
 - **Windows CLI**: the shared TypeScript client can already be compiled with `deno compile`, and
   existing CI runs the test suite on Windows. A separately supported Windows client, packaging, and
   end-to-end verification are future work.
-- **Android**: future work. Recommended approach is a native Kotlin/Compose app using the same API,
-  with tokens in Android Keystore-backed storage and a foreground/background event refresh strategy.
+- **Android**: implemented in [`android/`](android/README.md) with Kotlin and Jetpack Compose. It
+  covers authentication, conversations, history, send/edit/delete, search, read state, membership,
+  and profile editing, with Keystore-backed token storage. It has been compiled and unit-tested, but
+  runtime behavior has not been verified on a device or emulator in this repository's build
+  environment.
 
-See [`docs/PLATFORMS.md`](docs/PLATFORMS.md) for the integration plan and constraints. Neither a
-Windows-specific client nor an Android app is claimed as implemented.
+See [`docs/PLATFORMS.md`](docs/PLATFORMS.md) for the supported scope and security limits. A
+Windows-specific client is not claimed as implemented.
 
 ## Repository layout
 
 ```
+android/         Native Android client (Kotlin, Jetpack Compose)
 src/
   chat/          ChatProvider contract, demo, Google Chat, network provider
   client/        HTTP client, session storage, password prompt, CLI commands
