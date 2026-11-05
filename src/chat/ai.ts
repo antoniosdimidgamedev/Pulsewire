@@ -48,8 +48,11 @@ export interface AiResponderOptions {
 }
 
 const DEFAULT_TEMPERATURE = 0.8;
-const DEFAULT_MAX_TOKENS = 96;
-const DEFAULT_TIMEOUT_MS = 20_000;
+// Thinking mode spends tokens on the hidden reasoning block, so the budget
+// must cover both the reasoning and the short spoken reply. 96 (the old
+// default) ran out mid-thought and returned empty content.
+const DEFAULT_MAX_TOKENS = 384;
+const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_HISTORY = 12;
 const MAX_CONTEXT_CHARS = 4_000;
 const MAX_REPLY_CHARS = 600;
@@ -256,7 +259,7 @@ export function sanitizeAiReply(raw: string, speakerName: string): string | null
   // when thinking mode is on. Strip it so only the spoken reply reaches the
   // transcript; a thinking block is never a message the teammate "said".
   text = text.replace(/<thinking[\s\S]*?<\/thinking>/gu, "");
-  text = text.replace(/<\/thinking>/gu, "");
+  text = text.replace(/<\/thinking>/gu, " ");
 
   text = text.replace(/^```[a-zA-Z0-9_-]*\s*/u, "").replace(/```$/u, "").trim();
   text = text.replace(/^\s*#{1,6}\s*/gmu, "");

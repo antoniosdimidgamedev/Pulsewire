@@ -100,6 +100,14 @@ Deno.test("model output is cleaned up for a terminal transcript", () => {
   );
   strictEqual(sanitizeAiReply("   \n  ", "Maya Chen"), null);
   strictEqual(sanitizeAiReply("```\n```", "Maya Chen"), null);
+  strictEqual(
+    sanitizeAiReply("<thinking>Let me weigh the options.</thinking>Sounds good.", "Maya Chen"),
+    "Sounds good.",
+  );
+  strictEqual(
+    sanitizeAiReply("First part.</thinking>Second part.", "Maya Chen"),
+    "First part. Second part.",
+  );
   const long = sanitizeAiReply("word ".repeat(300), "Maya Chen") ?? "";
   strictEqual(long.length <= 600, true);
   strictEqual(long.endsWith("…"), true);
@@ -131,6 +139,55 @@ Deno.test("the responder posts to the local endpoint and returns text", async ()
   strictEqual(parsed.model, "qwen3:0.6b");
   strictEqual(parsed.messages.length > 1, true);
   strictEqual(responder.label, "qwen3:0.6b");
+});
+
+Deno.test("thinking content stays out of the transcript", async () => {
+  const reasoning = createAiResponder(SETTINGS, {
+    fetch: (() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            choices: [{
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                reasoning_content: "Internal chain of thought.",
+                content: "Here is the answer.",
+              },
+            }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )) as typeof fetch,
+  });
+  const result = await reasoning.reply(REQUEST);
+  strictEqual(result.ok, true);
+  if (result.ok) strictEqual(result.text, "Here is the answer.");
+
+  // A starved budget (reasoning ate all the tokens) must fail cleanly rather
+  // than leak the model's private reasoning into the chat.
+  const starved = createAiResponder(SETTINGS, {
+    fetch: (() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            choices: [{
+              finish_reason: "length",
+              message: {
+                role: "assistant",
+                reasoning_content: "The budget ran out mid-thought.",
+                content: "",
+              },
+            }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )) as typeof fetch,
+  });
+  deepStrictEqual(await starved.reply(REQUEST), {
+    ok: false,
+    reason: "the model returned no text",
+  });
 });
 
 Deno.test("the responder falls back cleanly on server and transport errors", async () => {

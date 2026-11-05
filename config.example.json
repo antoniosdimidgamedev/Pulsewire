@@ -13,8 +13,8 @@
       "baseUrl": "http://127.0.0.1:9931/v1",
       "model": "qwen3:0.6b",
       "temperature": 0.8,
-      "maxTokens": 96,
-      "timeoutMs": 20000,
+      "maxTokens": 384,
+      "timeoutMs": 30000,
       "history": 12
     }
   }

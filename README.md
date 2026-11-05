@@ -187,32 +187,32 @@ Start from [`config.example.json`](config.example.json):
       "baseUrl": "http://127.0.0.1:9931/v1",
       "model": "qwen3:0.6b",
       "temperature": 0.8,
-      "maxTokens": 96,
-      "timeoutMs": 20000,
+      "maxTokens": 384,
+      "timeoutMs": 30000,
       "history": 12
     }
   }
 }
 ```
 
-| Key                      | Values                                 | Meaning                             |
-| ------------------------ | -------------------------------------- | ----------------------------------- |
-| `provider`               | `demo`, `googlechat`                   | Which chat service to use           |
-| `displayName`            | string, max 40 characters              | Name used in the demo workspace     |
-| `dataDir`                | path                                   | Override the data directory         |
-| `simulateActivity`       | boolean                                | Demo replies and ambient messages   |
-| `ascii`                  | boolean                                | Use ASCII instead of Unicode glyphs |
-| `color`                  | `auto`, `truecolor`, `ansi256`, `none` | Terminal color mode                 |
-| `demo.connectDelayMs`    | non-negative integer                   | Simulated connection delay          |
-| `demo.replyDelayMs`      | non-negative integer                   | Delay before a simulated demo reply |
-| `demo.ambientIntervalMs` | non-negative integer                   | Background demo activity interval   |
-| `demo.ai.enabled`        | boolean                                | Use a local model for demo replies  |
-| `demo.ai.baseUrl`        | http(s) URL                            | OpenAI-compatible API base URL      |
-| `demo.ai.model`          | string                                 | Model name, e.g. `qwen3:0.6b`       |
-| `demo.ai.temperature`    | number, 0–2                            | Sampling temperature                |
-| `demo.ai.maxTokens`      | integer, 1–512                         | Reply length limit                  |
-| `demo.ai.timeoutMs`      | integer, 500–120000                    | Request timeout                     |
-| `demo.ai.history`        | integer, 1–50                          | Recent messages sent as context     |
+| Key                      | Values                                 | Meaning                                 |
+| ------------------------ | -------------------------------------- | --------------------------------------- |
+| `provider`               | `demo`, `googlechat`                   | Which chat service to use               |
+| `displayName`            | string, max 40 characters              | Name used in the demo workspace         |
+| `dataDir`                | path                                   | Override the data directory             |
+| `simulateActivity`       | boolean                                | Demo replies and ambient messages       |
+| `ascii`                  | boolean                                | Use ASCII instead of Unicode glyphs     |
+| `color`                  | `auto`, `truecolor`, `ansi256`, `none` | Terminal color mode                     |
+| `demo.connectDelayMs`    | non-negative integer                   | Simulated connection delay              |
+| `demo.replyDelayMs`      | non-negative integer                   | Delay before a simulated demo reply     |
+| `demo.ambientIntervalMs` | non-negative integer                   | Background demo activity interval       |
+| `demo.ai.enabled`        | boolean                                | Use a local model for demo replies      |
+| `demo.ai.baseUrl`        | http(s) URL                            | OpenAI-compatible API base URL          |
+| `demo.ai.model`          | string                                 | Model name, e.g. `qwen3:0.6b`           |
+| `demo.ai.temperature`    | number, 0–2                            | Sampling temperature                    |
+| `demo.ai.maxTokens`      | integer, 1–512                         | Output budget (covers thinking + reply) |
+| `demo.ai.timeoutMs`      | integer, 500–120000                    | Request timeout                         |
+| `demo.ai.history`        | integer, 1–50                          | Recent messages sent as context         |
 
 Environment variables override the config file, and command-line flags override both:
 
@@ -294,8 +294,10 @@ llama-server -m Qwen3-0.6B-Q4_K_M.gguf --host 127.0.0.1 --port 9931
 ```
 
 The default endpoint is `http://127.0.0.1:9931/v1`, which matches current llama.cpp builds. The
-managed server uses `--reasoning off` so Qwen3 answers directly instead of spending tokens on a
-thinking block.
+managed server runs Qwen3 in thinking mode (`--reasoning on --reasoning-budget 256`), so the model
+works through an answer before speaking. Only the final reply is posted; the reasoning stays hidden.
+Because thinking consumes output tokens, the default `demo.ai.maxTokens` is 384 so the reasoning
+block and the spoken reply both fit.
 
 On Linux, current llama.cpp builds link against OpenSSL 3. If the host only has OpenSSL 4 (for
 example Ubuntu 26.10), `make ai` fetches a private copy of the runtime into the llama.cpp directory;
@@ -513,6 +515,9 @@ type checking, and the test suite on Linux and Windows.
   your account is a test user if the consent screen is in testing mode.
 - **Demo data is corrupt** — Pulsewire reports the path and suggests `--reset-demo`; run it with
   `--yes` to replace the file.
+- **AI replies fall back to canned text** — check `make ai-status` and the log. In thinking mode the
+  output budget must cover both the hidden reasoning and the reply; if replies are empty, raise
+  `demo.ai.maxTokens` (the default is 384) or lower the server's `--reasoning-budget`.
 - **Config file not found** — missing files simply use defaults. Use `--print-config` to see the
   exact path Pulsewire checked.
 
