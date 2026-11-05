@@ -3,6 +3,7 @@ import { errorMessage, isChatError } from "./chat/errors.ts";
 import { applyOverrides } from "./cli.ts";
 import type { RunOverrides } from "./cli.ts";
 import { helpText, parseArgs, VERSION } from "./cli.ts";
+import { runClientCommand } from "./client/commands.ts";
 import { type AppConfig, ConfigError, loadConfig, printableConfig } from "./config.ts";
 import { GoogleOAuthSession } from "./google/oauth.ts";
 import {
@@ -10,6 +11,7 @@ import {
   GOOGLE_CHAT_SCOPES,
   loadGoogleChatSettings,
 } from "./google/settings.ts";
+import { loadServerSettings, startServer } from "./server/main.ts";
 import { PulsewireApp } from "./ui/app.ts";
 import { resolveColorMode, Theme } from "./ui/theme.ts";
 import { Terminal, TerminalUnavailableError } from "./ui/terminal.ts";
@@ -37,6 +39,31 @@ export async function main(argv: string[]): Promise<number> {
       return await authGoogle(command.overrides, !command.noBrowser);
     case "auth-status":
       return await authStatus(command.overrides);
+    case "serve":
+      return await serve(command.overrides, {
+        ...(command.host !== undefined ? { host: command.host } : {}),
+        ...(command.port !== undefined ? { port: command.port } : {}),
+        ...(command.dbPath !== undefined ? { dbPath: command.dbPath } : {}),
+      });
+    case "register":
+    case "login":
+    case "logout":
+    case "whoami":
+    case "profile":
+    case "conversations":
+    case "history":
+    case "send":
+    case "search":
+    case "new-dm":
+    case "new-group":
+    case "members":
+    case "invite":
+    case "remove-member":
+    case "leave":
+    case "read": {
+      const config = await load(command.overrides);
+      return await runClientCommand(command, config);
+    }
   }
 }
 
@@ -44,8 +71,56 @@ async function load(overrides: RunOverrides): Promise<AppConfig> {
   const env = Deno.env.toObject();
   if (overrides.configPath) env.PULSEWIRE_CONFIG = overrides.configPath;
   if (overrides.dataDir) env.PULSEWIRE_DATA_DIR = overrides.dataDir;
+  if (overrides.serverUrl) env.PULSEWIRE_SERVER_URL = overrides.serverUrl;
   const config = await loadConfig({ env });
   return applyOverrides(config, overrides);
+}
+
+async function serve(
+  overrides: RunOverrides,
+  options: { host?: string; port?: number; dbPath?: string },
+): Promise<number> {
+  const config = await load(overrides);
+  const env = Deno.env.toObject();
+  const settings = loadServerSettings(env, config.dataDir, options);
+  const running = await startServer(settings);
+
+  console.log(`Pulsewire server listening on ${running.url}`);
+  console.log(`Database: ${running.dbPath}`);
+  console.log(`Dashboard: ${running.url}/admin`);
+  console.log("The first registered account becomes an administrator.");
+  if (settings.host === "127.0.0.1" || settings.host === "localhost" || settings.host === "::1") {
+    console.log("This server accepts connections from this machine only.");
+  } else {
+    console.log("Listening on a non-loopback address. Put it behind TLS before exposing it.");
+  }
+  console.log("Press Ctrl+C to stop.");
+
+  const stop = Promise.withResolvers<void>();
+  const onSignal = () => stop.resolve();
+  try {
+    Deno.addSignalListener("SIGINT", onSignal);
+    Deno.addSignalListener("SIGTERM", onSignal);
+  } catch {
+    // SIGTERM is not supported on every platform; Ctrl+C still works.
+  }
+  try {
+    await stop.promise;
+  } finally {
+    try {
+      Deno.removeSignalListener("SIGINT", onSignal);
+    } catch {
+      // Ignore.
+    }
+    try {
+      Deno.removeSignalListener("SIGTERM", onSignal);
+    } catch {
+      // Ignore.
+    }
+    await running.shutdown();
+  }
+  console.log("Pulsewire server stopped.");
+  return 0;
 }
 
 async function runApp(overrides: RunOverrides): Promise<number> {
@@ -68,6 +143,19 @@ async function runApp(overrides: RunOverrides): Promise<number> {
 async function printConfig(overrides: RunOverrides): Promise<number> {
   const config = await load(overrides);
   const printable = printableConfig(config);
+  try {
+    const settings = loadServerSettings(Deno.env.toObject(), config.dataDir);
+    printable.serverSettings = {
+      host: settings.host,
+      port: settings.port,
+      dbPath: settings.dbPath,
+      sessionTtlMs: settings.sessionTtlMs,
+      passwordIterations: settings.passwordIterations,
+      adminHandle: settings.adminHandle ?? null,
+    };
+  } catch (error) {
+    printable.serverSettings = { error: errorMessage(error) };
+  }
   if (config.provider === "googlechat") {
     try {
       const settings = await loadGoogleChatSettings({
@@ -228,7 +316,7 @@ if (import.meta.main) {
     if (error instanceof TerminalUnavailableError) {
       console.error("Run Pulsewire directly inside a terminal window.");
     } else if (isChatError(error) && error.code === "auth_required") {
-      console.error("Run `pulsewire auth google` to sign in.");
+      console.error("Run `pulsewire login <handle>` to sign in again, or `pulsewire auth google`.");
     } else if (error instanceof ConfigError) {
       console.error("Run `pulsewire --print-config` to inspect resolved paths.");
     }

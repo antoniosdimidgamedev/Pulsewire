@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="referrer" content="no-referrer">
+    <title>Pulsewire Admin</title>
+    <link rel="stylesheet" href="/admin/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <section id="login-view" class="login-shell" aria-labelledby="login-title">
+      <div class="login-card">
+        <div class="brand brand-large">
+          <span class="brand-mark" aria-hidden="true">P</span>
+          <span class="brand-text">Pulsewire<span class="brand-sub">Admin</span></span>
+        </div>
+        <h1 id="login-title">Sign in to manage your server</h1>
+        <p class="muted login-intro">
+          Use an administrator account. Your password is sent only to this Pulsewire server.
+        </p>
+        <form id="login-form" novalidate>
+          <label class="field">
+            <span>Handle</span>
+            <input
+              id="login-handle"
+              name="handle"
+              type="text"
+              autocomplete="username"
+              autocapitalize="none"
+              spellcheck="false"
+              placeholder="alice"
+              required
+            >
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              placeholder="Your password"
+              required
+            >
+          </label>
+          <p id="login-error" class="form-error" role="alert" hidden></p>
+          <button id="login-submit" class="button button-primary button-block" type="submit">
+            Sign in
+          </button>
+        </form>
+        <p class="login-foot muted">Server: <span id="login-origin">this origin</span></p>
+      </div>
+    </section>
+
+    <div id="app-view" class="app-shell" hidden>
+      <aside class="sidebar" aria-label="Dashboard navigation">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">P</span>
+          <span class="brand-text">Pulsewire<span class="brand-sub">Admin</span></span>
+        </div>
+
+        <nav class="nav" id="nav">
+          <button class="nav-item is-active" type="button" data-view="overview">
+            <span class="nav-icon" aria-hidden="true">◈</span>
+            <span>Overview</span>
+          </button>
+          <button class="nav-item" type="button" data-view="users">
+            <span class="nav-icon" aria-hidden="true">◇</span>
+            <span>Accounts</span>
+          </button>
+          <button class="nav-item" type="button" data-view="conversations">
+            <span class="nav-icon" aria-hidden="true">▤</span>
+            <span>Conversations</span>
+          </button>
+          <button class="nav-item" type="button" data-view="activity">
+            <span class="nav-icon" aria-hidden="true">≡</span>
+            <span>Activity</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-foot">
+          <div class="account-card">
+            <div class="avatar" id="account-avatar" aria-hidden="true">?</div>
+            <div class="account-meta">
+              <strong id="account-name">Loading…</strong>
+              <span id="account-handle">@…</span>
+            </div>
+          </div>
+          <button id="logout-button" class="button button-ghost button-block" type="button">
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="topbar">
+          <div class="topbar-titles">
+            <h1 id="view-title">Overview</h1>
+            <p id="view-subtitle" class="muted">Server health and recent activity.</p>
+          </div>
+          <div class="topbar-actions">
+            <span id="status-pill" class="status-pill" data-state="idle">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span id="status-text">Ready</span>
+            </span>
+            <button id="refresh-button" class="button button-secondary" type="button">
+              Refresh
+            </button>
+          </div>
+        </header>
+
+        <main id="main-content" class="content" tabindex="-1">
+          <section id="panel-overview" class="panel" aria-labelledby="overview-heading">
+            <h2 id="overview-heading" class="sr-only">Overview</h2>
+            <div id="overview-cards" class="stat-grid" aria-live="polite"></div>
+
+            <div class="split-grid">
+              <article class="card">
+                <div class="card-head">
+                  <h3>Recent conversations</h3>
+                  <button class="link-button" type="button" data-view="conversations">
+                    View all
+                  </button>
+                </div>
+                <div id="overview-conversations" class="mini-list"></div>
+              </article>
+
+              <article class="card">
+                <div class="card-head">
+                  <h3>Latest activity</h3>
+                  <button class="link-button" type="button" data-view="activity">View all</button>
+                </div>
+                <div id="overview-activity" class="mini-list"></div>
+              </article>
+            </div>
+          </section>
+
+          <section id="panel-users" class="panel" aria-labelledby="users-heading" hidden>
+            <h2 id="users-heading" class="sr-only">Accounts</h2>
+            <div class="toolbar">
+              <label class="search-field">
+                <span class="sr-only">Search accounts</span>
+                <input
+                  id="users-search"
+                  type="search"
+                  placeholder="Search by handle or name"
+                  autocomplete="off"
+                >
+              </label>
+              <span id="users-count" class="muted"></span>
+            </div>
+
+            <div class="table-card">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th>Role</th>
+                    <th class="num">Conversations</th>
+                    <th class="num">Messages</th>
+                    <th>Joined</th>
+                    <th class="actions-col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="users-body"></tbody>
+              </table>
+              <div id="users-empty" class="empty-state" hidden>
+                <strong>No accounts found</strong>
+                <span>Try a different search.</span>
+              </div>
+            </div>
+
+            <div class="pagination">
+              <button id="users-prev" class="button button-secondary"
+                type="button">Previous</button>
+              <span id="users-page" class="muted" aria-live="polite"></span>
+              <button id="users-next" class="button button-secondary" type="button">Next</button>
+            </div>
+          </section>
+
+          <section
+            id="panel-conversations"
+            class="panel"
+            aria-labelledby="conversations-heading"
+            hidden
+          >
+            <h2 id="conversations-heading" class="sr-only">Conversations</h2>
+            <div class="toolbar">
+              <label class="search-field">
+                <span class="sr-only">Search conversations</span>
+                <input
+                  id="conversations-search"
+                  type="search"
+                  placeholder="Search by name or topic"
+                  autocomplete="off"
+                >
+              </label>
+              <span id="conversations-count" class="muted"></span>
+            </div>
+
+            <div class="table-card">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Conversation</th>
+                    <th>Kind</th>
+                    <th class="num">Members</th>
+                    <th class="num">Messages</th>
+                    <th>Updated</th>
+                    <th class="actions-col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="conversations-body"></tbody>
+              </table>
+              <div id="conversations-empty" class="empty-state" hidden>
+                <strong>No conversations found</strong>
+                <span>Try a different search.</span>
+              </div>
+            </div>
+
+            <div class="pagination">
+              <button id="conversations-prev" class="button button-secondary" type="button">
+                Previous
+              </button>
+              <span id="conversations-page" class="muted" aria-live="polite"></span>
+              <button id="conversations-next" class="button button-secondary"
+                type="button">Next</button>
+            </div>
+          </section>
+
+          <section id="panel-activity" class="panel" aria-labelledby="activity-heading" hidden>
+            <h2 id="activity-heading" class="sr-only">Activity</h2>
+            <div class="toolbar">
+              <label class="select-field">
+                <span class="sr-only">Filter activity</span>
+                <select id="activity-filter">
+                  <option value="">All events</option>
+                  <option value="message-created">Messages sent</option>
+                  <option value="message-updated">Messages edited</option>
+                  <option value="message-deleted">Messages deleted</option>
+                  <option value="conversation-updated">Conversation changes</option>
+                  <option value="read">Read receipts</option>
+                </select>
+              </label>
+              <span id="activity-count" class="muted"></span>
+            </div>
+
+            <div class="table-card">
+              <ol id="activity-list" class="timeline"></ol>
+              <div id="activity-empty" class="empty-state" hidden>
+                <strong>No activity yet</strong>
+                <span>Events appear here as people use the server.</span>
+              </div>
+            </div>
+
+            <div class="pagination">
+              <span></span>
+              <span class="muted" id="activity-hint"></span>
+              <button id="activity-more" class="button button-secondary" type="button">
+                Load older
+              </button>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <dialog id="confirm-dialog" class="dialog">
+      <form method="dialog">
+        <header class="dialog-head">
+          <h2 id="confirm-title">Confirm action</h2>
+        </header>
+        <div class="dialog-body">
+          <p id="confirm-message" class="muted"></p>
+        </div>
+        <footer class="dialog-foot">
+          <button class="button button-secondary" type="submit" value="cancel">Cancel</button>
+          <button id="confirm-accept" class="button button-danger" type="submit" value="confirm">
+            Confirm
+          </button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="conversation-dialog" class="dialog dialog-wide">
+      <header class="dialog-head">
+        <div>
+          <h2 id="conversation-title">Conversation</h2>
+          <p id="conversation-meta" class="muted"></p>
+        </div>
+        <button
+          id="conversation-close"
+          class="icon-button"
+          type="button"
+          aria-label="Close conversation"
+        >
+          ×
+        </button>
+      </header>
+      <div id="conversation-messages" class="message-list" aria-live="polite"></div>
+      <footer class="dialog-foot split">
+        <button id="conversation-older" class="button button-secondary" type="button" hidden>
+          Load older messages
+        </button>
+        <button id="conversation-delete" class="button button-danger" type="button">
+          Delete conversation
+        </button>
+      </footer>
+    </dialog>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+
+    <script src="/admin/app.js" type="module"></script>
+  </body>
+</html>

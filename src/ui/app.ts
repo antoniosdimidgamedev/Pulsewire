@@ -142,6 +142,24 @@ export class PulsewireApp {
     this.requestRender();
   }
 
+  private async handleConversationUpdated(): Promise<void> {
+    const currentId = selectedConversation(this.state)?.id;
+    try {
+      await this.refreshConversations();
+    } catch (error) {
+      this.setToast(errorMessage(error), "error");
+      return;
+    }
+    if (currentId && !this.state.conversations.some((item) => item.id === currentId)) {
+      this.loadedConversationId = undefined;
+      this.state.messages = [];
+      this.state.messageIndex = -1;
+      this.state.messageOffset = 0;
+      const first = this.state.conversations[0];
+      if (first) await this.openConversation(first.id);
+    }
+  }
+
   private async openConversation(
     conversationId: string,
     options: { focusMessages?: boolean; selectMessageId?: string } = {},
@@ -1005,6 +1023,9 @@ export class PulsewireApp {
         break;
       case "message-delivery":
         this.applyDelivery(event.messageId, event.delivery);
+        break;
+      case "conversation-updated":
+        void this.handleConversationUpdated();
         break;
       case "typing":
         this.state.typing = event.active ? event.user : undefined;

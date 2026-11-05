@@ -20,16 +20,28 @@ export interface DemoConfig {
   ai: DemoAiConfig;
 }
 
+export interface ServerConfig {
+  /** Base URL of the self-hosted Pulsewire server, without a trailing slash. */
+  baseUrl: string;
+  /** How often the client polls the server event log for changes. */
+  pollIntervalMs: number;
+  /** Per-request timeout for ordinary API calls. */
+  requestTimeoutMs: number;
+}
+
 export interface AppConfig {
   provider: string;
   displayName: string;
   configPath: string;
   dataDir: string;
   dataPath: string;
+  /** Local bearer-token store, keyed by server URL. */
+  sessionPath: string;
   simulateActivity: boolean;
   ascii: boolean;
   color: ColorMode;
   platform: string;
+  server: ServerConfig;
   demo: DemoConfig;
 }
 
@@ -58,6 +70,7 @@ interface FileConfig {
   provider?: string;
   displayName?: string;
   dataDir?: string;
+  server?: Partial<ServerConfig>;
   simulateActivity?: boolean;
   ascii?: boolean;
   color?: ColorMode;
@@ -77,13 +90,24 @@ export class ConfigError extends Error {
 const APP_DIR_UNIX = "pulsewire";
 const APP_DIR_WINDOWS = "Pulsewire";
 const DEMO_FILE = "demo.json";
+const SESSION_FILE = "session.json";
 
-const DEFAULTS: Omit<AppConfig, "configPath" | "dataDir" | "dataPath" | "platform"> = {
-  provider: "demo",
+const DEFAULT_SERVER_URL = "http://127.0.0.1:8787";
+
+const DEFAULTS: Omit<
+  AppConfig,
+  "configPath" | "dataDir" | "dataPath" | "sessionPath" | "platform"
+> = {
+  provider: "server",
   displayName: "You",
   simulateActivity: true,
   ascii: false,
   color: "auto",
+  server: {
+    baseUrl: DEFAULT_SERVER_URL,
+    pollIntervalMs: 1_500,
+    requestTimeoutMs: 15_000,
+  },
   demo: {
     connectDelayMs: 450,
     replyDelayMs: 1800,
@@ -224,6 +248,8 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<AppCo
   );
   if (color === "auto" && env.NO_COLOR !== undefined) color = "none";
 
+  const server = parseServerConfig(env, fileConfig.server, configPath);
+
   const fileAi = fileConfig.demo?.ai;
   const aiEnabled = env.PULSEWIRE_AI !== undefined
     ? parseBoolean(env.PULSEWIRE_AI, "PULSEWIRE_AI")
@@ -280,10 +306,12 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<AppCo
     configPath,
     dataDir,
     dataPath: demoDataPath(dataDir, platform),
+    sessionPath: path.join(dataDir, SESSION_FILE),
     simulateActivity,
     ascii,
     color,
     platform,
+    server,
     demo,
   };
 }
@@ -296,10 +324,12 @@ export function printableConfig(config: AppConfig): Record<string, unknown> {
     configPath: config.configPath,
     dataDir: config.dataDir,
     dataPath: config.dataPath,
+    sessionPath: config.sessionPath,
     simulateActivity: config.simulateActivity,
     ascii: config.ascii,
     color: config.color,
     platform: config.platform,
+    server: config.server,
     demo: config.demo,
   };
 }
@@ -326,6 +356,7 @@ function validateFileConfig(value: unknown, configPath: string): FileConfig {
     "provider",
     "displayName",
     "dataDir",
+    "server",
     "simulateActivity",
     "ascii",
     "color",
@@ -370,6 +401,42 @@ function validateFileConfig(value: unknown, configPath: string): FileConfig {
   }
   if (value.color !== undefined) {
     config.color = parseColorMode(value.color, `"color"`, configPath);
+  }
+  if (value.server !== undefined) {
+    if (!isRecord(value.server)) {
+      throw new ConfigError(`"server" must be an object.`, { path: configPath });
+    }
+    const allowedServer = new Set(["baseUrl", "pollIntervalMs", "requestTimeoutMs"]);
+    for (const key of Object.keys(value.server)) {
+      if (!allowedServer.has(key)) {
+        throw new ConfigError(`Unknown server configuration key "${key}".`, {
+          path: configPath,
+        });
+      }
+    }
+    const server: Partial<ServerConfig> = {};
+    if (value.server.baseUrl !== undefined) {
+      server.baseUrl = validateServerUrl(value.server.baseUrl, `"server.baseUrl"`, configPath);
+    }
+    if (value.server.pollIntervalMs !== undefined) {
+      server.pollIntervalMs = validateServerNumber(
+        value.server.pollIntervalMs,
+        `"server.pollIntervalMs"`,
+        100,
+        60_000,
+        configPath,
+      );
+    }
+    if (value.server.requestTimeoutMs !== undefined) {
+      server.requestTimeoutMs = validateServerNumber(
+        value.server.requestTimeoutMs,
+        `"server.requestTimeoutMs"`,
+        500,
+        120_000,
+        configPath,
+      );
+    }
+    config.server = server;
   }
   if (value.demo !== undefined) {
     if (!isRecord(value.demo)) {
@@ -483,6 +550,78 @@ function validateAiFileConfig(
     );
   }
   return ai;
+}
+
+function parseServerConfig(
+  env: Record<string, string | undefined>,
+  file: Partial<ServerConfig> | undefined,
+  configPath: string,
+): ServerConfig {
+  const baseUrl = normalizeServerUrl(validateServerUrl(
+    env.PULSEWIRE_SERVER_URL ?? file?.baseUrl ?? DEFAULTS.server.baseUrl,
+    env.PULSEWIRE_SERVER_URL !== undefined ? "PULSEWIRE_SERVER_URL" : "server.baseUrl",
+    env.PULSEWIRE_SERVER_URL !== undefined ? undefined : configPath,
+  ));
+  const pollIntervalMs = env.PULSEWIRE_SERVER_POLL_MS !== undefined
+    ? parseBoundedInt(
+      env.PULSEWIRE_SERVER_POLL_MS,
+      "PULSEWIRE_SERVER_POLL_MS",
+      100,
+      60_000,
+    )
+    : file?.pollIntervalMs ?? DEFAULTS.server.pollIntervalMs;
+  const requestTimeoutMs = env.PULSEWIRE_SERVER_TIMEOUT_MS !== undefined
+    ? parseBoundedInt(
+      env.PULSEWIRE_SERVER_TIMEOUT_MS,
+      "PULSEWIRE_SERVER_TIMEOUT_MS",
+      500,
+      120_000,
+    )
+    : file?.requestTimeoutMs ?? DEFAULTS.server.requestTimeoutMs;
+  return { baseUrl, pollIntervalMs, requestTimeoutMs };
+}
+
+function validateServerUrl(value: unknown, name: string, configPath?: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ConfigError(`${name} must be a non-empty http(s) URL.`, { path: configPath });
+  }
+  try {
+    const parsed = new URL(value.trim());
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.username || parsed.password || parsed.search || parsed.hash
+    ) {
+      throw new Error("invalid");
+    }
+  } catch {
+    throw new ConfigError(
+      `${name} must be a valid http(s) URL without credentials, a query, or a fragment.`,
+      { path: configPath },
+    );
+  }
+  return value.trim();
+}
+
+function normalizeServerUrl(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function validateServerNumber(
+  value: unknown,
+  name: string,
+  minimum: number,
+  maximum: number,
+  configPath: string,
+): number {
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new ConfigError(`${name} must be an integer.`, { path: configPath });
+  }
+  if (value < minimum || value > maximum) {
+    throw new ConfigError(`${name} must be between ${minimum} and ${maximum}.`, {
+      path: configPath,
+    });
+  }
+  return value;
 }
 
 function validateAiBaseUrl(value: unknown, name: string, configPath?: string): string {

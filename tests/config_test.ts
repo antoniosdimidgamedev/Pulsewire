@@ -80,13 +80,17 @@ Deno.test("default paths follow Linux, macOS, and Windows conventions", () => {
   );
 });
 
-Deno.test("loadConfig returns local demo defaults without a config file", async () => {
+Deno.test("loadConfig returns self-hosted server defaults without a config file", async () => {
   const config = await load({ platform: "linux", env: {}, home: "/home/alex" });
-  strictEqual(config.provider, "demo");
+  strictEqual(config.provider, "server");
   strictEqual(config.displayName, "You");
   strictEqual(config.configPath, "/home/alex/.config/pulsewire/config.json");
   strictEqual(config.dataDir, "/home/alex/.local/share/pulsewire");
   strictEqual(config.dataPath, "/home/alex/.local/share/pulsewire/demo.json");
+  strictEqual(config.sessionPath, "/home/alex/.local/share/pulsewire/session.json");
+  strictEqual(config.server.baseUrl, "http://127.0.0.1:8787");
+  strictEqual(config.server.pollIntervalMs, 1_500);
+  strictEqual(config.server.requestTimeoutMs, 15_000);
   strictEqual(config.simulateActivity, true);
   strictEqual(config.color, "auto");
   strictEqual(config.demo.replyDelayMs, 1_800);
@@ -192,12 +196,73 @@ Deno.test("printable config exposes no secrets", async () => {
     },
   });
   const printed = printableConfig(config);
-  strictEqual(printed.provider, "demo");
+  strictEqual(printed.provider, "server");
   strictEqual(printed.configPath, config.configPath);
+  strictEqual(printed.sessionPath, config.sessionPath);
   const serialized = JSON.stringify(printed);
   strictEqual(serialized.includes("super-secret"), false);
   strictEqual(serialized.includes("token-value"), false);
   match(serialized, /"dataPath"/);
+  match(serialized, /"baseUrl"/);
+});
+
+Deno.test("server settings load from file and environment", async () => {
+  const fromFile = await load({
+    platform: "linux",
+    env: {},
+    readTextFile: async () =>
+      JSON.stringify({
+        server: {
+          baseUrl: "https://chat.example.test/",
+          pollIntervalMs: 2_000,
+          requestTimeoutMs: 20_000,
+        },
+      }),
+  });
+  strictEqual(fromFile.server.baseUrl, "https://chat.example.test");
+  strictEqual(fromFile.server.pollIntervalMs, 2_000);
+  strictEqual(fromFile.server.requestTimeoutMs, 20_000);
+
+  const fromEnv = await load({
+    platform: "linux",
+    env: {
+      PULSEWIRE_SERVER_URL: "http://192.0.2.10:9000",
+      PULSEWIRE_SERVER_POLL_MS: "500",
+      PULSEWIRE_SERVER_TIMEOUT_MS: "5000",
+    },
+  });
+  strictEqual(fromEnv.server.baseUrl, "http://192.0.2.10:9000");
+  strictEqual(fromEnv.server.pollIntervalMs, 500);
+  strictEqual(fromEnv.server.requestTimeoutMs, 5_000);
+
+  await rejects(
+    load({
+      platform: "linux",
+      env: {},
+      readTextFile: async () => JSON.stringify({ server: { baseUrl: "ftp://example.test" } }),
+    }),
+    /valid http\(s\) URL/,
+  );
+  await rejects(
+    load({
+      platform: "linux",
+      env: {},
+      readTextFile: async () => JSON.stringify({ server: { baseUrl: "http://user:pass@x.test" } }),
+    }),
+    /without credentials/,
+  );
+  await rejects(
+    load({ platform: "linux", env: { PULSEWIRE_SERVER_POLL_MS: "10" } }),
+    /between 100 and 60000/,
+  );
+  await rejects(
+    load({
+      platform: "linux",
+      env: {},
+      readTextFile: async () => JSON.stringify({ server: { unknown: true } }),
+    }),
+    /Unknown server configuration key/,
+  );
 });
 
 Deno.test("Windows config paths are parsed with win32 semantics", async () => {

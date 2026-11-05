@@ -6,6 +6,8 @@ export interface User {
   id: string;
   displayName: string;
   handle: string;
+  /** True for accounts that can use the management dashboard. */
+  isAdmin?: boolean;
 }
 
 export interface Conversation {
@@ -93,6 +95,10 @@ export type ProviderEvent =
     conversationId: string;
     messageId: string;
     delivery: MessageDelivery;
+  }
+  | {
+    type: "conversation-updated";
+    conversationId: string;
   }
   | {
     type: "typing";

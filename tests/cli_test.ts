@@ -108,6 +108,110 @@ Deno.test("applyOverrides keeps provider precedence explicit", () => {
   strictEqual(model.demo.ai.model, "qwen3:0.6b");
   const off = applyOverrides(applyOverrides(config(), { ai: true }), { ai: false });
   strictEqual(off.demo.ai.enabled, false);
+  const server = applyOverrides(config(), { serverUrl: " https://chat.example.test/ " });
+  strictEqual(server.server.baseUrl, "https://chat.example.test");
+});
+
+Deno.test("parseArgs routes server, account, and messaging commands", () => {
+  deepStrictEqual(parseArgs(["register", "alice", "--name", "Alice"]), {
+    kind: "register",
+    overrides: {},
+    handle: "alice",
+    displayName: "Alice",
+    passwordStdin: false,
+  });
+  deepStrictEqual(parseArgs(["login", "@alice", "--password-stdin"]), {
+    kind: "login",
+    overrides: {},
+    handle: "@alice",
+    passwordStdin: true,
+  });
+  deepStrictEqual(parseArgs(["logout"]), { kind: "logout", overrides: {} });
+  deepStrictEqual(parseArgs(["whoami"]), { kind: "whoami", overrides: {} });
+  deepStrictEqual(parseArgs(["profile", "--name", "Alice A."]), {
+    kind: "profile",
+    overrides: {},
+    displayName: "Alice A.",
+  });
+  deepStrictEqual(parseArgs(["conversations", "--server", "http://127.0.0.1:9000"]), {
+    kind: "conversations",
+    overrides: { serverUrl: "http://127.0.0.1:9000" },
+  });
+  deepStrictEqual(parseArgs(["history", "c_1", "--limit", "20", "--before", "42"]), {
+    kind: "history",
+    overrides: {},
+    conversation: "c_1",
+    limit: 20,
+    before: 42,
+  });
+  deepStrictEqual(parseArgs(["send", "c_1", "hello", "world", "--reply-to", "m_1"]), {
+    kind: "send",
+    overrides: {},
+    conversation: "c_1",
+    body: "hello world",
+    replyTo: "m_1",
+  });
+  deepStrictEqual(parseArgs(["search", "release", "notes"]), {
+    kind: "search",
+    overrides: {},
+    query: "release notes",
+  });
+  deepStrictEqual(parseArgs(["new-dm", "@bob"]), {
+    kind: "new-dm",
+    overrides: {},
+    handle: "@bob",
+  });
+  deepStrictEqual(parseArgs(["new-group", "Team", "bob", "carol"]), {
+    kind: "new-group",
+    overrides: {},
+    name: "Team",
+    members: ["bob", "carol"],
+  });
+  deepStrictEqual(parseArgs(["invite", "c_1", "bob"]), {
+    kind: "invite",
+    overrides: {},
+    conversation: "c_1",
+    handle: "bob",
+  });
+  deepStrictEqual(parseArgs(["remove-member", "c_1", "@bob"]), {
+    kind: "remove-member",
+    overrides: {},
+    conversation: "c_1",
+    member: "@bob",
+  });
+  deepStrictEqual(parseArgs(["leave", "c_1"]), {
+    kind: "leave",
+    overrides: {},
+    conversation: "c_1",
+  });
+  deepStrictEqual(parseArgs(["read", "c_1"]), {
+    kind: "read",
+    overrides: {},
+    conversation: "c_1",
+  });
+  deepStrictEqual(
+    parseArgs(["serve", "--host", "0.0.0.0", "--port", "9000", "--db", "db.sqlite"]),
+    {
+      kind: "serve",
+      overrides: {},
+      host: "0.0.0.0",
+      port: 9000,
+      dbPath: "db.sqlite",
+    },
+  );
+  deepStrictEqual(parseArgs(["send", "c_1", "hello", "--demo"]), {
+    kind: "send",
+    overrides: { demo: true },
+    conversation: "c_1",
+    body: "hello",
+  });
+  assertError(parseArgs(["register"]), "needs a handle");
+  assertError(parseArgs(["send", "c_1"]), "needs a message body");
+  assertError(parseArgs(["new-group", "Team"]), "needs at least one member");
+  assertError(parseArgs(["profile"]), "needs --name");
+  assertError(parseArgs(["serve", "--port", "surprise"]), "must be an integer");
+  assertError(parseArgs(["history", "c_1", "--limit", "0"]), "between 1 and 100");
+  assertError(parseArgs(["--server"]), "--server needs a URL");
 });
 
 Deno.test("help text documents providers, setup, and shortcuts", () => {
@@ -119,7 +223,9 @@ Deno.test("help text documents providers, setup, and shortcuts", () => {
   strictEqual(text.includes("--ai"), true);
   strictEqual(text.includes("Ctrl+C"), true);
   strictEqual(text.includes("Search"), true);
-  strictEqual(text.includes("demo provider contacts nothing unless --ai is"), true);
+  strictEqual(text.includes("offline demo"), true);
+  strictEqual(text.includes("serve"), true);
+  strictEqual(text.includes("register"), true);
 });
 
 Deno.test("color mode validation matches config values", () => {
@@ -142,10 +248,16 @@ function config(): AppConfig {
     configPath: "/config.json",
     dataDir: "/data",
     dataPath: "/data/demo.json",
+    sessionPath: "/data/session.json",
     simulateActivity: true,
     ascii: false,
     color: "auto",
     platform: "linux",
+    server: {
+      baseUrl: "http://127.0.0.1:8787",
+      pollIntervalMs: 1_500,
+      requestTimeoutMs: 15_000,
+    },
     demo: {
       connectDelayMs: 0,
       replyDelayMs: 0,

@@ -1,6 +1,11 @@
 {
-  "provider": "demo",
-  "displayName": "Ada",
+  "provider": "server",
+  "displayName": "Your Name",
+  "server": {
+    "baseUrl": "http://127.0.0.1:8787",
+    "pollIntervalMs": 1500,
+    "requestTimeoutMs": 15000
+  },
   "simulateActivity": true,
   "ascii": false,
   "color": "auto",
