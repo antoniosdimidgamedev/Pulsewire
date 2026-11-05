@@ -37,3 +37,35 @@ jobs:
 
       - name: Test
         run: deno task test
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: android-actions/setup-android@v4.0.4
+
+      - name: Network diagnostics
+        run: |
+          echo "--- maven.google.com ---"
+          curl -sI --max-time 10 https://maven.google.com/ | head -5 || true
+          echo "--- plugins.gradle.org ---"
+          curl -sI --max-time 10 https://plugins.gradle.org/ | head -5 || true
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses >/dev/null 2>&1
+
+      - name: Build, lint, and unit test
+        working-directory: android
+        run: ./gradlew --no-daemon --stacktrace --info :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
