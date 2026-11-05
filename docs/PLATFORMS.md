@@ -61,9 +61,22 @@ hostname -I
 # In the app: http://<LAN-IP>:8787
 ```
 
-Allow port `8787` through the host firewall, then confirm `http://<LAN-IP>:8787/health` from the
-phone's browser. The Android Studio emulator can use `http://10.0.2.2:8787` to reach the host
-machine's loopback instead.
+For a stable LAN address that does not change across reboots, set a static IP on the host's
+interface (example for NetworkManager on Linux):
+
+```sh
+nmcli connection modify <connection> \
+  ipv4.addresses 192.168.1.55/24 \
+  ipv4.gateway 192.168.1.1 \
+  ipv4.dns "1.1.1.1,8.8.8.8" \
+  ipv4.method manual
+nmcli connection up <connection>
+```
+
+Replace `<connection>` with your connection name (`nmcli connection show`) and the addresses with
+your LAN's gateway/DNS. Then confirm `http://<LAN-IP>:8787/health` from the phone's browser. Allow
+port `8787` through the host firewall if necessary. The Android Studio emulator can use
+`http://10.0.2.2:8787` to reach the host machine's loopback instead.
 
 ### Build and verification status
 
@@ -93,6 +106,21 @@ deployment that leaves the machine:
 - add proxy-level rate limiting in addition to the built-in login limiter;
 - create the first account immediately so an administrator exists, or set `PULSEWIRE_ADMIN_HANDLE`
   to a known account.
+
+### At-rest database encryption
+
+Stock SQLite (used by Deno's `node:sqlite`) does **not** encrypt database files: `PRAGMA key` is
+accepted but is a no-op without a SQLCipher build. The `.db` file (and its WAL sidecars) therefore
+contains readable plaintext at rest.
+
+To encrypt data at rest, protect the data directory at the filesystem level instead, for example:
+
+- Full-disk or directory encryption (LUKS, fscrypt, BitLocker, FileVault) on the host.
+- Mount the `PULSEWIRE_DATA_DIR` on an encrypted filesystem.
+- Run the server inside an encrypted container/volume.
+
+Back up the decrypted `.db` file together with its WAL sidecars, and restrict filesystem access to
+the data directory so only the server user can read it.
 
 The dashboard is served by the same process. It needs no separate web server, build step, or
 extension; its files are included in compiled binaries with `--include web`.

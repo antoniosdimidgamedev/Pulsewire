@@ -7,6 +7,12 @@ import { DatabaseSync } from "node:sqlite";
  * conversations, memberships, messages, and an append-only event log that
  * clients poll for changes. Foreign keys and WAL mode keep writes durable and
  * concurrent reads fast enough for a small team.
+ *
+ * Note: stock SQLite (used by Deno's `node:sqlite`) does not encrypt database
+ * files. `PRAGMA key` is accepted but is a no-op without a SQLCipher build.
+ * For at-rest encryption of the `.db` file, encrypt the data directory at the
+ * filesystem level (e.g. LUKS/fscrypt) or build with SQLCipher. See
+ * `docs/PLATFORMS.md` for the deployment guidance.
  */
 export function openDatabase(path: string): DatabaseSync {
   const db = new DatabaseSync(path);

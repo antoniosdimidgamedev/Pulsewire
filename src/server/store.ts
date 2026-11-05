@@ -8,6 +8,7 @@ import {
   verifyPassword,
 } from "./auth.ts";
 import { ApiError, badRequest, conflict, forbidden, notFound } from "./errors.ts";
+import { decrypt, encrypt, isEnabled } from "./crypto.ts";
 
 const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_GROUP_NAME = 80;
@@ -449,10 +450,10 @@ export class MessagingStore {
     return this.adminConversationFromRow(row);
   }
 
-  adminGetMessagePage(
+  async adminGetMessagePage(
     conversationId: string,
     options: { limit?: number; before?: number } = {},
-  ): MessagePage {
+  ): Promise<MessagePage> {
     if (!this.conversationRow(conversationId)) throw notFound("Conversation not found.");
     const limit = clampLimit(options.limit);
     const before = options.before ?? (this.maxSeq(conversationId) + 1);
@@ -467,7 +468,7 @@ export class MessagingStore {
     const hasMore = rows.length > limit;
     const page = rows.slice(0, limit).reverse();
     return {
-      messages: page.map((row) => this.hydrateMessage(row, "", [])),
+      messages: await Promise.all(page.map((row) => this.hydrateMessage(row, "", []))),
       hasMore,
       ...(hasMore && page[0] ? { nextBefore: page[0].seq } : {}),
     };
@@ -586,27 +587,29 @@ export class MessagingStore {
     return rows.map(userFromRow);
   }
 
-  listConversations(userId: string): Conversation[] {
+  async listConversations(userId: string): Promise<Conversation[]> {
     const rows = this.db.prepare(
       `SELECT c.* FROM conversations c
        JOIN memberships mb ON mb.conversation_id = c.id
        WHERE mb.user_id = ?`,
     ).all(userId) as unknown as ConversationRow[];
-    const conversations = rows.map((row) => this.hydrateConversation(row, userId));
+    const conversations = await Promise.all(
+      rows.map((row) => this.hydrateConversation(row, userId)),
+    );
     return conversations.sort(
       (a, b) => Date.parse(b.lastActivityAt) - Date.parse(a.lastActivityAt),
     );
   }
 
-  getConversation(userId: string, conversationId: string): Conversation {
+  async getConversation(userId: string, conversationId: string): Promise<Conversation> {
     const row = this.conversationRow(conversationId);
     if (!row || !this.membership(conversationId, userId)) {
       throw notFound("Conversation not found.");
     }
-    return this.hydrateConversation(row, userId);
+    return await this.hydrateConversation(row, userId);
   }
 
-  createConversation(
+  async createConversation(
     userId: string,
     input: {
       kind: ConversationKind;
@@ -614,7 +617,7 @@ export class MessagingStore {
       topic?: string;
       memberHandles: string[];
     },
-  ): ConversationResult {
+  ): Promise<ConversationResult> {
     if (input.kind === "dm") {
       const handles = uniqueHandles(input.memberHandles);
       if (handles.length !== 1) {
@@ -628,7 +631,7 @@ export class MessagingStore {
         | ConversationRow
         | undefined;
       if (existing) {
-        return { conversation: this.hydrateConversation(existing, userId), created: false };
+        return { conversation: await this.hydrateConversation(existing, userId), created: false };
       }
       const id = this.idFactory("c");
       const name = other.display_name;
@@ -641,7 +644,7 @@ export class MessagingStore {
       this.insertMembership(id, userId, "owner", now);
       this.insertMembership(id, other.id, "member", now);
       this.insertEvent("conversation-updated", id, { actorId: userId });
-      return { conversation: this.getConversation(userId, id), created: true };
+      return { conversation: await this.getConversation(userId, id), created: true };
     }
 
     const name = validateGroupName(input.name ?? "");
@@ -672,7 +675,7 @@ export class MessagingStore {
     this.insertMembership(id, userId, "owner", now);
     for (const member of members) this.insertMembership(id, member.id, "member", now);
     this.insertEvent("conversation-updated", id, { actorId: userId });
-    return { conversation: this.getConversation(userId, id), created: true };
+    return { conversation: await this.getConversation(userId, id), created: true };
   }
 
   listMembers(userId: string, conversationId: string): MemberInfo[] {
@@ -680,7 +683,11 @@ export class MessagingStore {
     return this.members(conversationId);
   }
 
-  addMember(userId: string, conversationId: string, handleInput: string): Conversation {
+  async addMember(
+    userId: string,
+    conversationId: string,
+    handleInput: string,
+  ): Promise<Conversation> {
     this.requireMembership(userId, conversationId);
     const conversation = this.conversationRow(conversationId)!;
     if (conversation.kind === "dm") {
@@ -706,7 +713,7 @@ export class MessagingStore {
       conversationId,
     );
     this.insertEvent("conversation-updated", conversationId, { actorId: userId });
-    return this.getConversation(userId, conversationId);
+    return await this.getConversation(userId, conversationId);
   }
 
   removeMember(userId: string, conversationId: string, targetUserId: string): boolean {
@@ -752,11 +759,11 @@ export class MessagingStore {
     return false;
   }
 
-  getMessagePage(
+  async getMessagePage(
     userId: string,
     conversationId: string,
     options: { limit?: number; before?: number } = {},
-  ): MessagePage {
+  ): Promise<MessagePage> {
     this.requireMembership(userId, conversationId);
     const limit = clampLimit(options.limit);
     const before = options.before ?? (this.maxSeq(conversationId) + 1);
@@ -772,13 +779,13 @@ export class MessagingStore {
     const page = rows.slice(0, limit).reverse();
     const cutoffs = this.members(conversationId);
     return {
-      messages: page.map((row) => this.hydrateMessage(row, userId, cutoffs)),
+      messages: await Promise.all(page.map((row) => this.hydrateMessage(row, userId, cutoffs))),
       hasMore,
       ...(hasMore && page[0] ? { nextBefore: page[0].seq } : {}),
     };
   }
 
-  getThread(userId: string, messageId: string): Message[] {
+  async getThread(userId: string, messageId: string): Promise<Message[]> {
     const start = this.messageRow(messageId);
     if (!start) throw notFound("Message not found.");
     this.requireMembership(userId, start.conversation_id);
@@ -797,17 +804,18 @@ export class MessagingStore {
        SELECT * FROM thread ORDER BY seq ASC`,
     ).all(root.id) as unknown as MessageRow[];
     const cutoffs = this.members(start.conversation_id);
-    return rows.map((row) => this.hydrateMessage(row, userId, cutoffs));
+    return await Promise.all(rows.map((row) => this.hydrateMessage(row, userId, cutoffs)));
   }
 
-  sendMessage(
+  async sendMessage(
     userId: string,
     conversationId: string,
     bodyInput: string,
     replyToId?: string,
-  ): Message {
+  ): Promise<Message> {
     this.requireMembership(userId, conversationId);
     const body = validateBody(bodyInput);
+    const encryptedBody = isEnabled() ? await encrypt(body) : body;
     if (replyToId) {
       const parent = this.messageRow(replyToId);
       if (!parent || parent.conversation_id !== conversationId || parent.deleted_at) {
@@ -820,7 +828,7 @@ export class MessagingStore {
       `INSERT INTO messages
         (id, conversation_id, author_id, body, reply_to_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(id, conversationId, userId, body, replyToId ?? null, now);
+    ).run(id, conversationId, userId, encryptedBody, replyToId ?? null, now);
     this.db.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?").run(
       now,
       conversationId,
@@ -830,16 +838,17 @@ export class MessagingStore {
     return this.hydrateMessage(row!, userId, this.members(conversationId));
   }
 
-  editMessage(userId: string, messageId: string, bodyInput: string): Message {
+  async editMessage(userId: string, messageId: string, bodyInput: string): Promise<Message> {
     const row = this.messageRow(messageId);
     if (!row) throw notFound("Message not found.");
     this.requireMembership(userId, row.conversation_id);
     if (row.author_id !== userId) throw forbidden("You can only edit your own messages.");
     if (row.deleted_at) throw badRequest("Deleted messages cannot be edited.");
     const body = validateBody(bodyInput);
+    const encryptedBody = isEnabled() ? await encrypt(body) : body;
     const now = this.nowIso();
     this.db.prepare("UPDATE messages SET body = ?, edited_at = ? WHERE id = ?").run(
-      body,
+      encryptedBody,
       now,
       messageId,
     );
@@ -869,7 +878,7 @@ export class MessagingStore {
     this.insertEvent("message-deleted", row.conversation_id, { messageId, actorId: userId });
   }
 
-  markRead(userId: string, conversationId: string): Conversation {
+  async markRead(userId: string, conversationId: string): Promise<Conversation> {
     const membership = this.requireMembership(userId, conversationId);
     const max = this.maxSeq(conversationId);
     if (max > membership.last_read_seq) {
@@ -879,37 +888,58 @@ export class MessagingStore {
       ).run(max, conversationId, userId);
       this.insertEvent("read", conversationId, { actorId: userId });
     }
-    return this.getConversation(userId, conversationId);
+    return await this.getConversation(userId, conversationId);
   }
 
-  search(userId: string, queryInput: string): SearchResult[] {
+  async search(userId: string, queryInput: string): Promise<SearchResult[]> {
     const query = validateQuery(queryInput);
     const like = `%${escapeLike(query)}%`;
-    const rows = this.db.prepare(
-      `SELECT m.* FROM messages m
-       JOIN conversations c ON c.id = m.conversation_id
-       JOIN memberships mb ON mb.conversation_id = m.conversation_id
-       WHERE mb.user_id = ? AND m.deleted_at IS NULL
-         AND (m.body LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\')
-       ORDER BY m.seq DESC LIMIT ?`,
-    ).all(userId, like, like, MAX_SEARCH_RESULTS) as unknown as MessageRow[];
+    // When bodies are encrypted, SQL LIKE cannot match ciphertext, so search
+    // matches conversation names only. Message bodies are decrypted below.
+    let rows: MessageRow[];
+    if (isEnabled()) {
+      rows = this.db.prepare(
+        `SELECT m.* FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+         JOIN memberships mb ON mb.conversation_id = m.conversation_id
+         WHERE mb.user_id = ? AND m.deleted_at IS NULL
+           AND (c.name LIKE ? ESCAPE '\\')
+         ORDER BY m.seq DESC LIMIT ?`,
+      ).all(userId, like, MAX_SEARCH_RESULTS) as unknown as MessageRow[];
+    } else {
+      rows = this.db.prepare(
+        `SELECT m.* FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+         JOIN memberships mb ON mb.conversation_id = m.conversation_id
+         WHERE mb.user_id = ? AND m.deleted_at IS NULL
+           AND (m.body LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\')
+         ORDER BY m.seq DESC LIMIT ?`,
+      ).all(userId, like, like, MAX_SEARCH_RESULTS) as unknown as MessageRow[];
+    }
     const conversations = new Map<string, Conversation>();
-    return rows.map((row) => {
+    const results: SearchResult[] = [];
+    for (const row of rows) {
       let conversation = conversations.get(row.conversation_id);
       if (!conversation) {
-        conversation = this.getConversation(userId, row.conversation_id);
+        conversation = await this.getConversation(userId, row.conversation_id);
         conversations.set(row.conversation_id, conversation);
       }
-      const message = this.hydrateMessage(
+      const message = await this.hydrateMessage(
         row,
         userId,
         this.members(row.conversation_id),
       );
-      return { message, conversation, snippet: snippetFor(row.body, query) };
-    });
+      let snippetBody = row.body;
+      if (isEnabled()) {
+        const decrypted = await decrypt(row.body);
+        snippetBody = decrypted ?? "";
+      }
+      results.push({ message, conversation, snippet: snippetFor(snippetBody, query) });
+    }
+    return results;
   }
 
-  getEvents(userId: string, after: number, limitInput?: number): EventPage {
+  async getEvents(userId: string, after: number, limitInput?: number): Promise<EventPage> {
     if (!Number.isInteger(after) || after < 0) {
       throw badRequest("`after` must be a non-negative event sequence.");
     }
@@ -937,7 +967,7 @@ export class MessagingStore {
       if (row.type === "message-created" || row.type === "message-updated") {
         const messageRow = row.message_id ? this.messageRow(row.message_id) : undefined;
         if (messageRow) {
-          event.message = this.hydrateMessage(
+          event.message = await this.hydrateMessage(
             messageRow,
             userId,
             this.members(messageRow.conversation_id),
@@ -1049,7 +1079,7 @@ export class MessagingStore {
     };
   }
 
-  private hydrateConversation(row: ConversationRow, viewerId: string): Conversation {
+  private async hydrateConversation(row: ConversationRow, viewerId: string): Promise<Conversation> {
     const members = this.members(row.id);
     const viewer = members.find((member) => member.user.id === viewerId);
     const latest = this.db.prepare(
@@ -1068,6 +1098,17 @@ export class MessagingStore {
       : undefined;
     const other = members.find((member) => member.user.id !== viewerId);
     const name = row.kind === "dm" && other ? other.user.displayName : row.name;
+    let previewText = "";
+    if (latest) {
+      if (latest.deleted_at) {
+        previewText = "Message deleted";
+      } else if (isEnabled()) {
+        const decrypted = await decrypt(latest.body);
+        previewText = decrypted ? preview(decrypted) : "";
+      } else {
+        previewText = preview(latest.body);
+      }
+    }
     return {
       id: row.id,
       kind: row.kind,
@@ -1076,25 +1117,32 @@ export class MessagingStore {
       members: members.map((member) => member.user),
       unreadCount: Number(unread.count),
       lastActivityAt: latest?.created_at ?? row.updated_at,
-      lastMessagePreview: latest
-        ? latest.deleted_at ? "Message deleted" : preview(latest.body)
-        : "",
+      lastMessagePreview: previewText,
       ...(latest ? { lastMessageAt: latest.created_at } : {}),
       ...(lastReadRow ? { lastReadAt: lastReadRow.created_at } : {}),
     };
   }
 
-  private hydrateMessage(row: MessageRow, viewerId: string, cutoffs: MemberInfo[]): Message {
+  private async hydrateMessage(
+    row: MessageRow,
+    viewerId: string,
+    cutoffs: MemberInfo[],
+  ): Promise<Message> {
     const author = this.getUser(row.author_id) ?? {
       id: row.author_id,
       displayName: "Unknown",
       handle: "unknown",
     };
+    let body = row.deleted_at ? "" : row.body;
+    if (!row.deleted_at && isEnabled()) {
+      const decrypted = await decrypt(row.body);
+      body = decrypted ?? "";
+    }
     const message: Message = {
       id: row.id,
       conversationId: row.conversation_id,
       author,
-      body: row.deleted_at ? "" : row.body,
+      body,
       createdAt: row.created_at,
       ...(row.edited_at ? { editedAt: row.edited_at } : {}),
       ...(row.deleted_at ? { deletedAt: row.deleted_at } : {}),

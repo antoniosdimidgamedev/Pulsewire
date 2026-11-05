@@ -1,6 +1,7 @@
 import { dirname, isAbsolute, resolve } from "node:path";
 import { ConfigError } from "../config.ts";
 import { DEFAULT_PBKDF2_ITERATIONS } from "./auth.ts";
+import { initDbKey } from "./crypto.ts";
 import { openDatabase } from "./db.ts";
 import { ApiError } from "./errors.ts";
 import { createRequestHandler } from "./http.ts";
@@ -14,12 +15,15 @@ export interface ServeOverrides {
   host?: string;
   port?: number;
   dbPath?: string;
+  dbKey?: string;
 }
 
 export interface ServerSettings {
   host: string;
   port: number;
   dbPath: string;
+  /** When set, message bodies are encrypted at rest with AES-256-GCM. */
+  dbKey?: string;
   sessionTtlMs: number;
   passwordIterations: number;
   /** Optional handle promoted to administrator at startup. */
@@ -56,6 +60,8 @@ export function loadServerSettings(
     ? configuredDb
     : resolve(configuredDb);
 
+  const dbKey = overrides.dbKey ?? ((env.PULSEWIRE_DB_KEY ?? "").trim() || undefined);
+
   const ttlDays = parseInteger(
     env.PULSEWIRE_SESSION_TTL_DAYS,
     "PULSEWIRE_SESSION_TTL_DAYS",
@@ -77,6 +83,7 @@ export function loadServerSettings(
     host,
     port,
     dbPath,
+    dbKey,
     sessionTtlMs: ttlDays * 24 * 60 * 60 * 1_000,
     passwordIterations,
     ...(adminHandle ? { adminHandle } : {}),
@@ -99,6 +106,9 @@ export async function startServer(
     await Deno.mkdir(dirname(settings.dbPath), { recursive: true });
   }
   const db = openDatabase(settings.dbPath);
+  if (settings.dbKey) {
+    await initDbKey(settings.dbKey);
+  }
   const store = new MessagingStore(db, {
     passwordIterations: settings.passwordIterations,
     sessionTtlMs: settings.sessionTtlMs,

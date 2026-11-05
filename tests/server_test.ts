@@ -132,18 +132,27 @@ Deno.test("direct messages are idempotent and hidden from non-members", async ()
   strictEqual(second.created, false);
   strictEqual(second.conversation.id, first.conversation.id);
 
-  const message = store.sendMessage(alice.user.id, first.conversation.id, "hello Bob");
+  const message = await store.sendMessage(alice.user.id, first.conversation.id, "hello Bob");
   strictEqual(message.body, "hello Bob");
 
   // Non-members get a not-found response so conversation existence is not disclosed.
-  throws(() => store.getConversation(carol.user.id, first.conversation.id), /not found/i);
-  throws(() => store.getMessagePage(carol.user.id, first.conversation.id), /not found/i);
-  throws(
-    () => store.sendMessage(carol.user.id, first.conversation.id, "let me in"),
+  await rejects(
+    store.getConversation(carol.user.id, first.conversation.id),
     /not found/i,
   );
-  throws(() => store.getThread(carol.user.id, message.id), /not found/i);
-  strictEqual(store.search(carol.user.id, "hello").length, 0);
+  await rejects(
+    store.getMessagePage(carol.user.id, first.conversation.id),
+    /not found/i,
+  );
+  await rejects(
+    store.sendMessage(carol.user.id, first.conversation.id, "let me in"),
+    /not found/i,
+  );
+  await rejects(
+    store.getThread(carol.user.id, message.id),
+    /not found/i,
+  );
+  strictEqual((await store.search(carol.user.id, "hello")).length, 0);
 });
 
 Deno.test("messages: ordering, pagination, edit, delete, and read state", async () => {
@@ -157,41 +166,41 @@ Deno.test("messages: ordering, pagination, edit, delete, and read state", async 
   });
   const id = group.conversation.id;
 
-  const first = store.sendMessage(alice.user.id, id, "one");
-  store.sendMessage(bob.user.id, id, "two");
-  const third = store.sendMessage(alice.user.id, id, "three");
+  const first = await store.sendMessage(alice.user.id, id, "one");
+  await store.sendMessage(bob.user.id, id, "two");
+  const third = await store.sendMessage(alice.user.id, id, "three");
 
-  const page = store.getMessagePage(alice.user.id, id, { limit: 2 });
+  const page = await store.getMessagePage(alice.user.id, id, { limit: 2 });
   deepStrictEqual(page.messages.map((message) => message.body), ["two", "three"]);
   strictEqual(page.hasMore, true);
   strictEqual(typeof page.nextBefore, "number");
 
-  const older = store.getMessagePage(alice.user.id, id, {
+  const older = await store.getMessagePage(alice.user.id, id, {
     limit: 2,
     before: page.nextBefore,
   });
   deepStrictEqual(older.messages.map((message) => message.body), ["one"]);
   strictEqual(older.hasMore, false);
 
-  const thread = store.getThread(bob.user.id, first.id);
+  const thread = await store.getThread(bob.user.id, first.id);
   deepStrictEqual(thread.map((message) => message.body), ["one"]);
 
-  const edited = store.editMessage(alice.user.id, first.id, "one (edited)");
+  const edited = await store.editMessage(alice.user.id, first.id, "one (edited)");
   strictEqual(edited.body, "one (edited)");
   strictEqual(typeof edited.editedAt, "string");
-  throws(() => store.editMessage(bob.user.id, first.id, "hijacked"), /your own/);
+  await rejects(() => store.editMessage(bob.user.id, first.id, "hijacked"), /your own/);
 
-  store.deleteMessage(alice.user.id, third.id);
-  const afterDelete = store.getMessagePage(alice.user.id, id, { limit: 10 });
+  await store.deleteMessage(alice.user.id, third.id);
+  const afterDelete = await store.getMessagePage(alice.user.id, id, { limit: 10 });
   const deleted = afterDelete.messages.find((message) => message.id === third.id)!;
   strictEqual(deleted.body, "");
   strictEqual(typeof deleted.deletedAt, "string");
-  throws(() => store.editMessage(alice.user.id, third.id, "revived"), /Deleted/);
+  await rejects(() => store.editMessage(alice.user.id, third.id, "revived"), /Deleted/);
   throws(() => store.deleteMessage(bob.user.id, first.id), /your own/);
 
-  const before = store.getConversation(bob.user.id, id);
+  const before = await store.getConversation(bob.user.id, id);
   strictEqual(before.unreadCount, 1);
-  const read = store.markRead(bob.user.id, id);
+  const read = await store.markRead(bob.user.id, id);
   strictEqual(read.unreadCount, 0);
 });
 
@@ -208,12 +217,15 @@ Deno.test("membership: invite, remove, ownership, and leave", async () => {
   });
   const id = group.conversation.id;
 
-  throws(
-    () => store.addMember(carol.user.id, id, "carol"),
+  await rejects(
+    store.addMember(carol.user.id, id, "carol"),
     /not found/i,
   );
-  strictEqual(store.addMember(alice.user.id, id, "@carol").members.length, 3);
-  throws(() => store.addMember(alice.user.id, id, "carol"), /already in/);
+  strictEqual((await store.addMember(alice.user.id, id, "@carol")).members.length, 3);
+  await rejects(
+    store.addMember(alice.user.id, id, "carol"),
+    /already in/,
+  );
 
   throws(
     () => store.removeMember(bob.user.id, id, carol.user.id),
@@ -231,8 +243,8 @@ Deno.test("membership: invite, remove, ownership, and leave", async () => {
     kind: "dm",
     memberHandles: ["bob"],
   });
-  throws(
-    () => store.addMember(alice.user.id, dm.conversation.id, "carol"),
+  await rejects(
+    store.addMember(alice.user.id, dm.conversation.id, "carol"),
     /Direct messages/,
   );
 });
@@ -247,38 +259,41 @@ Deno.test("search and events are scoped to the current user's memberships", asyn
     kind: "dm",
     memberHandles: ["bob"],
   });
-  const secret = store.sendMessage(alice.user.id, dm.conversation.id, "a private plan");
+  const secret = await store.sendMessage(alice.user.id, dm.conversation.id, "a private plan");
   const group = await store.createConversation(alice.user.id, {
     kind: "group",
     name: "Planning",
     memberHandles: ["bob", "carol"],
   });
-  store.sendMessage(alice.user.id, group.conversation.id, "the public plan");
+  await store.sendMessage(alice.user.id, group.conversation.id, "the public plan");
 
   deepStrictEqual(
-    store.search(bob.user.id, "plan").map((result) => result.message.body).sort(),
+    (await store.search(bob.user.id, "plan")).map((result) => result.message.body).sort(),
     ["a private plan", "the public plan"],
   );
   deepStrictEqual(
-    store.search(carol.user.id, "plan").map((result) => result.message.body),
+    (await store.search(carol.user.id, "plan")).map((result) => result.message.body),
     ["the public plan"],
   );
-  strictEqual(store.search(bob.user.id, "private plan")[0]!.snippet.includes("private"), true);
+  strictEqual(
+    (await store.search(bob.user.id, "private plan"))[0]!.snippet.includes("private"),
+    true,
+  );
 
-  const aliceEvents = store.getEvents(alice.user.id, 0, 200);
+  const aliceEvents = await store.getEvents(alice.user.id, 0, 200);
   strictEqual(aliceEvents.events.some((event) => event.messageId === secret.id), true);
-  const bobEvents = store.getEvents(bob.user.id, 0, 200);
+  const bobEvents = await store.getEvents(bob.user.id, 0, 200);
   strictEqual(bobEvents.events.some((event) => event.messageId === secret.id), true);
 
   // Carol only sees events for the group she was added to.
-  const carolEvents = store.getEvents(carol.user.id, 0, 200);
+  const carolEvents = await store.getEvents(carol.user.id, 0, 200);
   strictEqual(
     carolEvents.events.every((event) => event.conversationId === group.conversation.id),
     true,
   );
 
-  store.markRead(bob.user.id, dm.conversation.id);
-  const readEvents = store.getEvents(alice.user.id, 0, 200);
+  await store.markRead(bob.user.id, dm.conversation.id);
+  const readEvents = await store.getEvents(alice.user.id, 0, 200);
   strictEqual(readEvents.events.some((event) => event.type === "read"), true);
   strictEqual(store.headEventSeq() >= readEvents.nextSeq, true);
 });

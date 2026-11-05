@@ -122,7 +122,7 @@ async function route(
   }
 
   if (method === "GET" && path === "/v1/conversations") {
-    return json({ conversations: store.listConversations(user.id) });
+    return json({ conversations: await store.listConversations(user.id) });
   }
 
   if (method === "POST" && path === "/v1/conversations") {
@@ -145,7 +145,7 @@ async function route(
 
   if (method === "GET" && path === "/v1/search") {
     const query = url.searchParams.get("query") ?? url.searchParams.get("q") ?? "";
-    return json({ results: store.search(user.id, query) });
+    return json({ results: await store.search(user.id, query) });
   }
 
   if (method === "GET" && path === "/v1/events/head") {
@@ -155,18 +155,20 @@ async function route(
   if (method === "GET" && path === "/v1/events") {
     const after = queryInteger(url, "after", 0);
     const limit = queryInteger(url, "limit", 100);
-    return json(store.getEvents(user.id, after, limit));
+    return json(await store.getEvents(user.id, after, limit));
   }
 
   const messageMatch = path.match(/^\/v1\/messages\/([^/]+)(?:\/(thread))?$/);
   if (messageMatch) {
     const messageId = decodeURIComponent(messageMatch[1]!);
     if (method === "GET" && messageMatch[2] === "thread") {
-      return json({ messages: store.getThread(user.id, messageId) });
+      return json({ messages: await store.getThread(user.id, messageId) });
     }
     if (method === "PATCH") {
       const body = await readJson(request);
-      return json({ message: store.editMessage(user.id, messageId, requiredString(body, "body")) });
+      return json({
+        message: await store.editMessage(user.id, messageId, requiredString(body, "body")),
+      });
     }
     if (method === "DELETE") {
       store.deleteMessage(user.id, messageId);
@@ -183,17 +185,19 @@ async function route(
     const extra = conversationMatch[3];
 
     if (!action && method === "GET") {
-      return json({ conversation: store.getConversation(user.id, conversationId) });
+      return json({ conversation: await store.getConversation(user.id, conversationId) });
     }
 
     if (action === "messages" && !extra) {
       if (method === "GET") {
         const limit = optionalQueryInteger(url, "limit");
         const before = optionalQueryInteger(url, "before");
-        return json(store.getMessagePage(user.id, conversationId, {
-          ...(limit !== undefined ? { limit } : {}),
-          ...(before !== undefined ? { before } : {}),
-        }));
+        return json(
+          await store.getMessagePage(user.id, conversationId, {
+            ...(limit !== undefined ? { limit } : {}),
+            ...(before !== undefined ? { before } : {}),
+          }),
+        );
       }
       if (method === "POST") {
         const body = await readJson(request);
@@ -201,7 +205,7 @@ async function route(
           ? undefined
           : requiredString(body, "replyToId");
         return json({
-          message: store.sendMessage(
+          message: await store.sendMessage(
             user.id,
             conversationId,
             requiredString(body, "body"),
@@ -212,7 +216,7 @@ async function route(
     }
 
     if (action === "read" && !extra && method === "POST") {
-      return json({ conversation: store.markRead(user.id, conversationId) });
+      return json({ conversation: await store.markRead(user.id, conversationId) });
     }
 
     if (action === "members" && !extra) {
@@ -223,7 +227,11 @@ async function route(
         const body = await readJson(request);
         return json(
           {
-            conversation: store.addMember(user.id, conversationId, requiredString(body, "handle")),
+            conversation: await store.addMember(
+              user.id,
+              conversationId,
+              requiredString(body, "handle"),
+            ),
           },
           201,
         );
@@ -301,7 +309,7 @@ async function adminRoute(
     parts.length === 3 && method === "GET"
   ) {
     const conversation = store.adminGetConversation(second);
-    const page = store.adminGetMessagePage(second, {
+    const page = await store.adminGetMessagePage(second, {
       limit: optionalQueryInteger(url, "limit"),
       before: optionalQueryInteger(url, "before"),
     });
