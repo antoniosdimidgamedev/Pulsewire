@@ -62,3 +62,4 @@ jobs:
       - name: Build, lint, and unit test
         working-directory: android
         run: ./gradlew --no-daemon :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
+        # Requires network access to Maven/Gradle plugin portal for first-time AGP download.
