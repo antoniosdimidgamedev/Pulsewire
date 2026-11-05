@@ -324,12 +324,17 @@ endpoint (and the alias used by `make ai`).
   speaking. Only the spoken reply reaches the transcript; the thinking block is stripped.
 - Each reply is generated from the last `demo.ai.history` messages, the conversation topic, and a
   short persona for the teammate who is replying.
+- Teammates stay in character as real coworkers: the persona prompt carries each person's voice and
+  few-shot examples, forbids saying it is an AI/bot/assistant, and deflects direct questions about
+  it. Obvious assistant-speak slips are stripped from the output.
 - The typing indicator stays visible while the model thinks. Output is cleaned up: Markdown, name
-  prefixes, and extra whitespace are removed, and the reply is length-capped.
+  prefixes, AI self-identifications, and extra whitespace are removed, and the reply is
+  length-capped.
 - If the server is down, slow, or returns something unusable, Pulsewire shows one warning and falls
   back to the canned replies so the demo never stalls.
-- The header shows `DEMO · AI` while AI replies are on. The workspace is still clearly a demo and is
-  never connected to Google Chat.
+- The header shows `DEMO · AI` while AI replies are on. In-character replies are a role-play
+  feature, not a claim that the conversations are real: the workspace is clearly labeled a demo and
+  is never connected to Google Chat.
 - Requests go only to the endpoint you configure. The recent transcript is sent there as prompt
   context: with the default localhost URL it stays on your machine, but a remote `baseUrl` means
   message text leaves your machine. Do not point it at a service you do not trust.

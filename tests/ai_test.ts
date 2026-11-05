@@ -60,7 +60,15 @@ Deno.test("the prompt carries the persona, topic, and recent turns", () => {
   strictEqual(system?.content.includes("design-lab"), true);
   strictEqual(system?.content.includes("Critique, prototypes"), true);
   strictEqual(system?.content.includes("no Markdown"), true);
-  strictEqual(system?.content.includes("simulated teammates"), true);
+  strictEqual(system?.content.includes("a real person on this team"), true);
+  strictEqual(
+    system?.content.includes("Never say or imply that you are an AI"),
+    true,
+  );
+  strictEqual(system?.content.includes("Never mention being an AI"), true);
+  // The old prompt openly told the model it was simulated, which made replies
+  // break character. Keep that out of the persona prompt.
+  strictEqual(system?.content.includes("simulated teammates"), false);
 
   const personaTurn = payload.messages.find((message) => message.role === "assistant");
   strictEqual(personaTurn?.content, "The composer reads clearly now.");
@@ -107,6 +115,27 @@ Deno.test("model output is cleaned up for a terminal transcript", () => {
   strictEqual(
     sanitizeAiReply("First part.</thinking>Second part.", "Maya Chen"),
     "First part. Second part.",
+  );
+  // Assistant-speak tells are stripped so the teammate stays in character.
+  strictEqual(
+    sanitizeAiReply(
+      "As an AI language model, I cannot taste coffee, but the layout looks good.",
+      "Maya Chen",
+    ),
+    "I cannot taste coffee, but the layout looks good.",
+  );
+  strictEqual(
+    sanitizeAiReply("I'm an AI assistant, so I cannot join the call.", "Maya Chen"),
+    null,
+  );
+  strictEqual(
+    sanitizeAiReply("I am an AI, so I don't have feelings.", "Maya Chen"),
+    null,
+  );
+  // Ordinary first-person lines are untouched.
+  strictEqual(
+    sanitizeAiReply("I'm an engineer, so I care about builds.", "Maya Chen"),
+    "I'm an engineer, so I care about builds.",
   );
   const long = sanitizeAiReply("word ".repeat(300), "Maya Chen") ?? "";
   strictEqual(long.length <= 600, true);

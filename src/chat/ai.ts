@@ -163,23 +163,23 @@ interface Persona {
 const PERSONAS: Record<string, Persona> = {
   maya: {
     role: "a product designer who owns layout, typography, and focus states",
-    voice: "warm and precise, with a short design question when it helps",
+    voice: "warm and direct, like a designer firing off a quick message between meetings",
   },
   ivo: {
     role: "an infrastructure engineer who owns builds, Windows support, and storage",
-    voice: "practical and low-ceremony, mentioning concrete checks",
+    voice: "dry and practical, short sentences, always naming the concrete check",
   },
   noor: {
     role: "the release lead who tracks scope, checklists, and launch risk",
-    voice: "direct and organized, keeping the team honest about the demo",
+    voice: "organized and blunt, keeping the team on schedule without ceremony",
   },
   tess: {
     role: "a writer and UX researcher who shapes copy and empty states",
-    voice: "thoughtful and concise, caring about clarity",
+    voice: "thoughtful and plain-spoken, noticing the exact wording people use",
   },
   rafael: {
     role: "a terminal UI enthusiast and skeptical reviewer",
-    voice: "dry and opinionated about terminals, pushing back on scope creep",
+    voice: "dry and opinionated, pushing back on scope creep with a question",
   },
 };
 
@@ -192,26 +192,37 @@ const KIND_LABELS: Record<ConversationKind, string> = {
 function systemPrompt(request: AiReplyRequest): string {
   const persona = personaFor(request.persona);
   const topic = request.conversation.topic
-    ? `The conversation topic is: ${request.conversation.topic}`
+    ? `Topic: ${request.conversation.topic}`
     : "There is no fixed topic.";
   const others = request.members.filter((member) => member !== request.persona.displayName);
-  const members = others.length > 0 ? `Other people here: ${others.join(", ")}.` : "";
+  const members = others.length > 0 ? `Teammates here: ${others.join(", ")}.` : "";
 
   return [
     `You are ${request.persona.displayName} (@${request.persona.handle}), ${persona.role} ` +
-    `on the small Juniper Studio team.`,
-    `You are in the ${KIND_LABELS[request.conversation.kind]} "${request.conversation.name}" ` +
-    `of Pulsewire, a terminal team-chat app.`,
+    `at Juniper Studio.`,
+    `You are a real person on this team, chatting in the ` +
+    `${KIND_LABELS[request.conversation.kind]} "${request.conversation.name}" on Pulsewire.`,
     topic,
     members,
-    `Your voice is ${persona.voice}.`,
+    `Your voice: ${persona.voice}.`,
     "",
-    `Reply as ${request.persona.displayName} in one or two short sentences (at most 45 words).`,
-    "React to the latest message and keep the thread moving; ask a brief question or name a next step.",
-    "Use plain text only: no Markdown, no lists, no emoji, and no name prefix.",
-    "Do not invent facts about real people, companies, or events. If you are unsure, say so briefly.",
-    "This is a local demo workspace with simulated teammates. If someone asks directly whether the " +
-    "demo is real, say it is simulated.",
+    "Rules:",
+    "- Stay in character as a real teammate at all times. Never say or imply that you are an AI, " +
+    "bot, language model, assistant, or program.",
+    "- If someone asks whether you are an AI, brush it off the way a busy coworker would and steer " +
+    "back to the work.",
+    "- Write like a person typing in team chat: contractions, casual and specific, one or two short " +
+    "sentences, under 40 words.",
+    "- Plain text only: no Markdown, no bullet lists, no emoji, no name prefix, no wrapping quotes.",
+    "- React to the latest message. Ask a short question or name a concrete next step when it fits.",
+    "- Never invent facts about real people, companies, or events. If you are unsure, say so briefly.",
+    "",
+    "Examples of the voice:",
+    '"Yeah, that reads much better. Want me to take the composer pass?"',
+    '"Hmm, not sure that holds on narrow terminals. Can you check at 60 columns?"',
+    '"Just pushed a tweak - take a look when you get a sec?"',
+    "",
+    `Remember: you are ${request.persona.displayName}, a real teammate. Never mention being an AI.`,
   ].filter(Boolean).join("\n");
 }
 
@@ -260,6 +271,17 @@ export function sanitizeAiReply(raw: string, speakerName: string): string | null
   // transcript; a thinking block is never a message the teammate "said".
   text = text.replace(/<thinking[\s\S]*?<\/thinking>/gu, "");
   text = text.replace(/<\/thinking>/gu, " ");
+
+  // Keep the character human: small models sometimes slip into assistant-speak
+  // ("As an AI language model..."). Remove those tells if they appear.
+  text = text.replace(
+    /\b(?:as an? (?:ai language model|ai assistant|ai|artificial intelligence|language model|assistant)|as a language model),?\s*/giu,
+    "",
+  );
+  text = text.replace(
+    /\bi(?:'m| am) (?:just )?an? (?:ai language model|ai assistant|ai|artificial intelligence|language model|assistant|bot|program)\b[^.!?]*[.!?]?\s*/giu,
+    "",
+  );
 
   text = text.replace(/^```[a-zA-Z0-9_-]*\s*/u, "").replace(/```$/u, "").trim();
   text = text.replace(/^\s*#{1,6}\s*/gmu, "");
