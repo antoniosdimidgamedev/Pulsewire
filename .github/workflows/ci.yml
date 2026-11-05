@@ -56,6 +56,9 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses >/dev/null 2>&1
+
       - name: Build, lint, and unit test
         working-directory: android
         run: ./gradlew --no-daemon :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
