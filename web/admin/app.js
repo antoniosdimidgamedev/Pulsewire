@@ -9,6 +9,7 @@ const state = {
   view: "overview",
   loadSeq: 0,
   timer: null,
+  guideStep: "overview",
   users: { query: "", offset: 0, total: 0 },
   conversations: { query: "", offset: 0, total: 0 },
   activity: { type: "", nextBefore: null, loaded: 0 },
@@ -40,6 +41,8 @@ const els = {
     activity: document.getElementById("panel-activity"),
     guide: document.getElementById("panel-guide"),
   },
+  guideNavItems: Array.from(document.querySelectorAll(".guide-nav-item[data-guide-step]")),
+  guidePages: Array.from(document.querySelectorAll(".guide-page[data-guide-step]")),
   navItems: Array.from(document.querySelectorAll(".nav-item[data-view]")),
   overviewCards: document.getElementById("overview-cards"),
   overviewConversations: document.getElementById("overview-conversations"),
@@ -314,12 +317,29 @@ function setAccountView(view) {
   for (const [name, panel] of Object.entries(els.panels)) {
     panel.hidden = name !== view;
   }
+  if (view === "guide") {
+    setGuideStep(state.guideStep || "overview");
+  }
 }
 
 async function setView(view) {
   if (!VIEW_META[view]) return;
   setAccountView(view);
   await loadView();
+}
+
+function setGuideStep(step) {
+  const page = els.guidePages.find((p) => p.dataset.guideStep === step);
+  const navItem = els.guideNavItems.find((n) => n.dataset.guideStep === step);
+  if (!page || !navItem) return;
+  state.guideStep = step;
+  for (const p of els.guidePages) {
+    p.hidden = p.dataset.guideStep !== step;
+  }
+  for (const n of els.guideNavItems) {
+    n.classList.toggle("is-active", n.dataset.guideStep === step);
+  }
+  page.hidden = false;
 }
 
 async function loadView() {
@@ -1024,6 +1044,12 @@ document.addEventListener("click", (event) => {
 els.navItems.forEach((item) => {
   item.addEventListener("click", () => {
     if (item.dataset.view) setView(item.dataset.view);
+  });
+});
+
+els.guideNavItems.forEach((item) => {
+  item.addEventListener("click", () => {
+    if (item.dataset.guideStep) setGuideStep(item.dataset.guideStep);
   });
 });
 

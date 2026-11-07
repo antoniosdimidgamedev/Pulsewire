@@ -317,66 +317,146 @@
 
     <section id="panel-guide" class="panel" aria-labelledby="guide-heading" hidden>
       <h2 id="guide-heading" class="sr-only">Guide</h2>
-      <div class="guide-card">
-        <h3>Pulsewire setup guide</h3>
-        <p class="muted">Get your self-hosted server online and connect your devices.</p>
+      <div class="guide-layout">
+        <nav class="guide-nav" aria-label="Guide steps">
+          <h3 class="guide-nav-title">Guide steps</h3>
+          <button class="guide-nav-item is-active" type="button" data-guide-step="overview">
+            <span class="guide-nav-number">1</span>
+            <span>Overview</span>
+          </button>
+          <button class="guide-nav-item" type="button" data-guide-step="start-server">
+            <span class="guide-nav-number">2</span>
+            <span>Start the server</span>
+          </button>
+          <button class="guide-nav-item" type="button" data-guide-step="static-ip">
+            <span class="guide-nav-number">3</span>
+            <span>Set a static LAN IP</span>
+          </button>
+          <button class="guide-nav-item" type="button" data-guide-step="firewall">
+            <span class="guide-nav-number">4</span>
+            <span>Allow port 8787</span>
+          </button>
+          <button class="guide-nav-item" type="button" data-guide-step="health-check">
+            <span class="guide-nav-number">5</span>
+            <span>Confirm reachability</span>
+          </button>
+          <button class="guide-nav-item" type="button" data-guide-step="connect-clients">
+            <span class="guide-nav-number">6</span>
+            <span>Connect clients</span>
+          </button>
+          <button class="guide-nav-item" type="button" data-guide-step="security">
+            <span class="guide-nav-number">7</span>
+            <span>Security boundary</span>
+          </button>
+        </nav>
 
-        <details class="guide-step">
-          <summary>1. Start the server</summary>
-          <div class="guide-body">
+        <main class="guide-content">
+          <section class="guide-page is-active" data-guide-step="overview">
+            <h2>Pulsewire setup guide</h2>
+            <p class="muted">Get your self-hosted server online and connect your devices.</p>
+            <div class="guide-steps-overview">
+              <div class="guide-overview-step">
+                <span class="guide-overview-number">1</span>
+                <div>
+                  <strong>Start the server</strong>
+                  <p class="muted">Bind to all interfaces so LAN devices can reach it.</p>
+                </div>
+              </div>
+              <div class="guide-overview-step">
+                <span class="guide-overview-number">2</span>
+                <div>
+                  <strong>Set a static LAN IP</strong>
+                  <p class="muted">A DHCP address can change and break client URLs.</p>
+                </div>
+              </div>
+              <div class="guide-overview-step">
+                <span class="guide-overview-number">3</span>
+                <div>
+                  <strong>Allow port 8787</strong>
+                  <p class="muted">Open the port through the host firewall.</p>
+                </div>
+              </div>
+              <div class="guide-overview-step">
+                <span class="guide-overview-number">4</span>
+                <div>
+                  <strong>Confirm reachability</strong>
+                  <p class="muted">Verify the server responds from another device.</p>
+                </div>
+              </div>
+              <div class="guide-overview-step">
+                <span class="guide-overview-number">5</span>
+                <div>
+                  <strong>Connect clients</strong>
+                  <p class="muted">Point the Android app, terminal, or dashboard at the server.</p>
+                </div>
+              </div>
+              <div class="guide-overview-step">
+                <span class="guide-overview-number">6</span>
+                <div>
+                  <strong>Security boundary</strong>
+                  <p class="muted">Cleartext HTTP is for trusted LANs only; use HTTPS elsewhere.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="guide-page" data-guide-step="start-server">
+            <h2>1. Start the server</h2>
             <pre><code>deno task server --host 0.0.0.0 --port 8787</code></pre>
             <p class="muted">Bind to all interfaces so LAN devices can reach it.</p>
-          </div>
-        </details>
+            <div class="guide-tip">
+              <strong>Tip:</span> The first account you register becomes the administrator.
+              Alternatively, set <code>PULSEWIRE_ADMIN_HANDLE</code> before starting to promote an
+              existing account.
+            </div>
+          </section>
 
-        <details class="guide-step">
-          <summary>2. Set a static LAN IP (recommended)</summary>
-          <div class="guide-body">
+          <section class="guide-page" data-guide-step="static-ip">
+            <h2>2. Set a static LAN IP (recommended)</h2>
             <pre><code>nmcli connection modify &lt;connection&gt; \
   ipv4.addresses 192.168.1.55/24 \
   ipv4.gateway 192.168.1.1 \
   ipv4.dns "1.1.1.1,8.8.8.8" \
   ipv4.method manual
 nmcli connection up &lt;connection&gt;</code></pre>
+            <p class="muted">Replace <code>&lt;connection&gt;</code> with your connection name
+            (<code>nmcli connection show</code>) and the addresses with your LAN's gateway/DNS.</p>
             <p class="muted">A DHCP address can change and break client URLs.</p>
-          </div>
-        </details>
+          </section>
 
-        <details class="guide-step">
-          <summary>3. Allow port 8787 through the firewall</summary>
-          <div class="guide-body">
+          <section class="guide-page" data-guide-step="firewall">
+            <h2>3. Allow port 8787 through the firewall</h2>
             <pre><code>sudo ufw allow 8787/tcp</code></pre>
-          </div>
-        </details>
+            <p class="muted">Devices on your LAN need to reach port 8787 on the host.</p>
+          </section>
 
-        <details class="guide-step">
-          <summary>4. Confirm reachability</summary>
-          <div class="guide-body">
+          <section class="guide-page" data-guide-step="health-check">
+            <h2>4. Confirm reachability</h2>
             <pre><code>curl http://&lt;LAN-IP&gt;:8787/health</code></pre>
             <p class="muted">Should return <code>{"status":"ok"}</code>.</p>
-          </div>
-        </details>
+          </section>
 
-        <details class="guide-step">
-          <summary>5. Connect clients</summary>
-          <div class="guide-body">
-            <p
-              class="muted">Enter <code>http://&lt;LAN-IP&gt;:8787</code> as the server address.</p>
+          <section class="guide-page" data-guide-step="connect-clients">
+            <h2>5. Connect clients</h2>
+            <p class="muted">Enter <code>http://&lt;LAN-IP&gt;:8787</code> as the server address.</p>
             <ul class="guide-list">
               <li><strong>Terminal:</strong> <code>deno task start login &lt;handle&gt; --server http://&lt;LAN-IP&gt;:8787</code></li>
               <li><strong>Android:</strong> Use <code>http://&lt;LAN-IP&gt;:8787</code> (emulator: <code>http://10.0.2.2:8787</code>)</li>
               <li><strong>Dashboard:</strong> <code>http://&lt;LAN-IP&gt;:8787/admin</code></li>
             </ul>
-          </div>
-        </details>
+          </section>
 
-        <details class="guide-step">
-          <summary>6. Security boundary</summary>
-          <div class="guide-body">
-            <p
-              class="muted">Cleartext HTTP is for trusted LANs only. Use HTTPS via a reverse proxy for any network you do not control. Set <code>PULSEWIRE_DB_KEY</code> to encrypt message bodies at rest.</p>
-          </div>
-        </details>
+          <section class="guide-page" data-guide-step="security">
+            <h2>6. Security boundary</h2>
+            <p class="muted">Cleartext HTTP is for trusted LANs only.</p>
+            <ul class="guide-list">
+              <li>Anyone on the LAN can observe session tokens and message traffic over plain HTTP.</li>
+              <li>Use HTTPS via a reverse proxy for any network you do not control.</li>
+              <li>Do not expose the plain HTTP server directly to the internet.</li>
+              <li>Set <code>PULSEWIRE_DB_KEY</code> to encrypt message bodies at rest.</li>
+            </ul>
+          </section>
+        </main>
       </div>
     </section>
 
