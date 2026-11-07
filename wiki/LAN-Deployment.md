@@ -9,7 +9,7 @@ By default the server listens on `127.0.0.1`, which other devices cannot reach.
 Start it on a private interface:
 
 ```sh
-deno task server --host 0.0.0.0 --port 8787
+pulsewire server --host 0.0.0.0 --port 8787
 ```
 
 For automatic launch with systemd, set `PULSEWIRE_SERVER_HOST=0.0.0.0` in

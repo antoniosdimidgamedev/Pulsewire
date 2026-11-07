@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# pulsewire — Pulsewire command-line launcher.
+#
+# Usage:
+#   pulsewire server               # start the server (foreground)
+#   pulsewire server --daemon      # start the server in the background
+#   pulsewire start                # start the terminal UI
+#   pulsewire --help               # show this help
+#
+# Requires DENO on PATH (or set DENO). Runs from the repository root.
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_DIR"
+
+DENO="${DENO:-deno}"
+
+if ! command -v "$DENO" >/dev/null 2>&1; then
+  echo "Error: deno not found. Install Deno (https://deno.com/) or set DENO." >&2
+  exit 1
+fi
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  server|serve)
+    exec "$DENO" task server "$@"
+    ;;
+  start|tui)
+    exec "$DENO" task start "$@"
+    ;;
+  dev|demo)
+    exec "$DENO" task dev "$@"
+    ;;
+  test)
+    exec "$DENO" task test "$@"
+    ;;
+  check)
+    exec "$DENO" task check "$@"
+    ;;
+  lint)
+    exec "$DENO" task lint "$@"
+    ;;
+  fmt)
+    exec "$DENO" task fmt "$@"
+    ;;
+  build-linux)
+    exec "$DENO" task compile:linux "$@"
+    ;;
+  build-windows)
+    exec "$DENO" task compile:windows "$@"
+    ;;
+  --help|-h|"")
+    cat <<EOF
+Pulsewire — self-hosted team messaging
+
+Usage: pulsewire <command> [options]
+
+Commands:
+  server [--daemon]   Start the Pulsewire server (default: foreground)
+  start               Start the terminal UI (TUI)
+  dev                 Start the TUI with the local demo provider
+  test                Run the test suite
+  check               Type-check source, scripts, and tests
+  lint                Lint source, scripts, and tests
+  fmt                 Format source files
+  build-linux         Build the Linux binary
+  build-windows       Build the Windows binary
+  --help, -h          Show this help
+
+Environment variables:
+  PULSEWIRE_SERVER_HOST   Bind address (default: 127.0.0.1)
+  PULSEWIRE_SERVER_PORT   TCP port (default: 8787)
+  PULSEWIRE_DB_KEY        At-rest encryption passphrase for message bodies
+  PULSEWIRE_ADMIN_HANDLE  Handle promoted to administrator at first start
+
+Examples:
+  pulsewire server --host 0.0.0.0 --port 8787
+  PULSEWIRE_DB_KEY=\$(cat ~/pulsewire-db-key.txt) pulsewire server --daemon
+  pulsewire start --server http://192.168.1.55:8787
+EOF
+    exit 0
+    ;;
+  *)
+    echo "Error: unknown command '$cmd'. Run 'pulsewire --help' for usage." >&2
+    exit 1
+    ;;
+esac

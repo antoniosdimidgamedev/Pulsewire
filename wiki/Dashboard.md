@@ -5,7 +5,7 @@ by the Pulsewire server process. No separate web server or build step is needed.
 
 ## Sign in
 
-1. Start the server: `deno task server --host 0.0.0.0 --port 8787`
+1. Start the server: `pulsewire server --host 0.0.0.0 --port 8787`
 2. Open `http://<LAN-IP>:8787/admin` in a browser
 3. Sign in with an administrator account (the first registered account becomes
    admin, or set `PULSEWIRE_ADMIN_HANDLE`)

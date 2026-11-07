@@ -23,14 +23,19 @@ deno --version
 
 ```sh
 # Default: listens on 127.0.0.1:8787 (loopback only)
-deno task server
+pulsewire server
 
 # LAN access: bind to all interfaces
-deno task server --host 0.0.0.0 --port 8787
+pulsewire server --host 0.0.0.0 --port 8787
+
+# Run in the background (daemon)
+pulsewire server --daemon
 
 # Custom database path
-PULSEWIRE_SERVER_DB=/data/pulsewire.db deno task server
+PULSEWIRE_SERVER_DB=/data/pulsewire.db pulsewire server
 ```
+
+Equivalently, all commands can be run with `deno task <name>`.
 
 ## Automatic launch
 
