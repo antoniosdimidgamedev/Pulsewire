@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Person
@@ -52,6 +53,7 @@ fun ConversationsScreen(
     onSearch: () -> Unit,
     onProfile: () -> Unit,
     onRefresh: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -73,6 +75,9 @@ fun ConversationsScreen(
                 }
                 IconButton(onClick = onRefresh, enabled = !state.loading) {
                     Icon(Icons.Filled.Refresh, contentDescription = "Refresh conversations")
+                }
+                IconButton(onClick = onSettings, enabled = !state.loading) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Settings")
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(

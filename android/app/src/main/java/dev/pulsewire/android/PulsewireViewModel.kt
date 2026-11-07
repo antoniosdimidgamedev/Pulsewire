@@ -27,6 +27,8 @@ sealed interface Screen {
     data class Members(val conversationId: String) : Screen
     data object Profile : Screen
     data object Search : Screen
+    data object Settings : Screen
+    data object About : Screen
 }
 
 data class PulsewireUiState(
@@ -423,6 +425,29 @@ class PulsewireViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun navigate(target: Screen) {
         screen = target
+    }
+
+    fun openSettings() {
+        screen = Screen.Settings
+    }
+
+    fun openAbout() {
+        screen = Screen.About
+    }
+
+    fun saveServerUrl(url: String) {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) {
+            state = state.copy(notice = "Enter the Pulsewire server address.")
+            return
+        }
+        val baseUrl = runCatching { PulsewireApi.normalizeBaseUrl(trimmed) }.getOrNull()
+        if (baseUrl == null) {
+            state = state.copy(notice = "That server address is not a valid URL.")
+            return
+        }
+        session.saveServerUrl(baseUrl)
+        state = state.copy(serverUrl = baseUrl, notice = "Server address saved.")
     }
 
     fun goBack() {

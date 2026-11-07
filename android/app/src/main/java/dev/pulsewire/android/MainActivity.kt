@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.pulsewire.android.ui.AuthScreen
+import dev.pulsewire.android.ui.AboutScreen
 import dev.pulsewire.android.ui.ChatScreen
 import dev.pulsewire.android.ui.ConversationsScreen
 import dev.pulsewire.android.ui.MembersScreen
@@ -25,6 +26,7 @@ import dev.pulsewire.android.ui.NewConversationScreen
 import dev.pulsewire.android.ui.ProfileScreen
 import dev.pulsewire.android.ui.PulsewireTheme
 import dev.pulsewire.android.ui.SearchScreen
+import dev.pulsewire.android.ui.SettingsScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,6 +84,7 @@ fun PulsewireApp(vm: PulsewireViewModel = viewModel()) {
                         onSearch = { vm.navigate(Screen.Search) },
                         onProfile = vm::openProfile,
                         onRefresh = vm::refreshConversations,
+                        onSettings = vm::openSettings,
                     )
                     is Screen.Chat -> ChatScreen(
                         state = state,
@@ -117,6 +120,17 @@ fun PulsewireApp(vm: PulsewireViewModel = viewModel()) {
                         onBack = vm::goBack,
                         onSearch = vm::search,
                         onOpenConversation = vm::openConversation,
+                    )
+                    Screen.Settings -> SettingsScreen(
+                        state = state,
+                        onBack = vm::goBack,
+                        onSaveServerUrl = vm::saveServerUrl,
+                        onSignOut = vm::signOut,
+                        onAbout = vm::openAbout,
+                    )
+                    Screen.About -> AboutScreen(
+                        state = state,
+                        onBack = vm::goBack,
                     )
                 }
             }
