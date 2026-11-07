@@ -146,9 +146,23 @@ team, survives reconnects without replay state, and leaves the transport replace
 The dashboard is an administrator-only interface served at `/admin`:
 
 - Overview: account, admin, conversation, message, deleted-message, event, and 24-hour counts.
-- Accounts: search, pagination, promote/demote. The last administrator cannot be removed.
+- Accounts: search, pagination, promote/demote administrators. The last administrator cannot be
+  removed.
 - Conversations: search, pagination, message history with `before` pagination, and deletion.
 - Activity: newest-first event feed with type filters and older-event pagination.
+
+### Administrator role management
+
+Administrators can manage other accounts' administrator status through the accounts view:
+
+- **Promote**: Grant administrator privileges to any account. Promoted accounts can access all
+  `/v1/admin/*` routes, open the dashboard, promote/demote other accounts, and delete
+  conversations/messages.
+- **Demote**: Revoke administrator privileges from any account. They become a regular member and
+  lose all administrator capabilities.
+- **Last administrator protection**: The system rejects attempts to demote the last remaining
+  administrator. At least one account must always have `is_admin = 1`. The dashboard UI blocks this
+  action.
 
 The assets are static and public so the sign-in page can load. All data routes under `/v1/admin/*`
 require an administrator token. The page uses a strict Content Security Policy and renders server

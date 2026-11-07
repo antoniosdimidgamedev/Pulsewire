@@ -3,12 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { ApiError } from "../src/server/errors.ts";
 import { migrate, openDatabase } from "../src/server/db.ts";
 import { createRequestHandler } from "../src/server/http.ts";
-import {
-  MessagingStore,
-  normalizeHandle,
-  validateHandle,
-  validatePassword,
-} from "../src/server/store.ts";
+import { MessagingStore, normalizeHandle, validateHandle } from "../src/server/store.ts";
 
 interface Harness {
   db: DatabaseSync;

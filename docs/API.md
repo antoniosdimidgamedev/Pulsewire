@@ -22,8 +22,8 @@ Get a token with `POST /v1/auth/register` or `POST /v1/auth/login`. Tokens are r
 values. The server stores only a SHA-256 hash of each token. Sessions expire after 30 days by
 default (`PULSEWIRE_SESSION_TTL_DAYS`).
 
-Passwords are never returned. Registration and sign-in requests must use TLS in any deployment
-that leaves the local machine.
+Passwords are never returned. Registration and sign-in requests must use TLS in any deployment that
+leaves the local machine.
 
 ## Errors
 
@@ -38,16 +38,16 @@ Errors use a consistent envelope:
 }
 ```
 
-| Status | Code | Meaning |
-| --- | --- | --- |
-| 400 | `invalid_input` | Malformed JSON, missing field, or failed validation |
-| 401 | `auth_required` | Missing, invalid, or expired session |
-| 403 | `forbidden` | Authenticated but not allowed, or not an administrator |
-| 404 | `not_found` | Missing resource, or a conversation the caller cannot see |
-| 409 | `conflict` | Handle or membership already exists, or last admin removal |
-| 413 | `invalid_input` | Request body larger than 64 KiB |
-| 429 | `rate_limited` | Too many failed sign-in attempts |
-| 500 | `internal` | Unexpected server failure |
+| Status | Code            | Meaning                                                    |
+| ------ | --------------- | ---------------------------------------------------------- |
+| 400    | `invalid_input` | Malformed JSON, missing field, or failed validation        |
+| 401    | `auth_required` | Missing, invalid, or expired session                       |
+| 403    | `forbidden`     | Authenticated but not allowed, or not an administrator     |
+| 404    | `not_found`     | Missing resource, or a conversation the caller cannot see  |
+| 409    | `conflict`      | Handle or membership already exists, or last admin removal |
+| 413    | `invalid_input` | Request body larger than 64 KiB                            |
+| 429    | `rate_limited`  | Too many failed sign-in attempts                           |
+| 500    | `internal`      | Unexpected server failure                                  |
 
 Non-members receive `404`, not `403`, when reading a conversation or message. This avoids disclosing
 whether a private conversation exists.
@@ -181,8 +181,8 @@ curl -sS -X POST "$PULSEWIRE_URL/v1/conversations" \
   -d '{"kind":"dm","memberHandles":["bob"]}'
 ```
 
-A DM is idempotent per pair. If it already exists, the existing conversation is returned with
-`200`; otherwise `201`.
+A DM is idempotent per pair. If it already exists, the existing conversation is returned with `200`;
+otherwise `201`.
 
 ### Create a group
 
@@ -271,8 +271,16 @@ curl -sS "$PULSEWIRE_URL/v1/conversations/$CONVERSATION_ID/members" \
 ```json
 {
   "members": [
-    { "user": { "id": "u_...", "handle": "alice", "displayName": "Alice" }, "role": "owner", "lastReadSeq": 12 },
-    { "user": { "id": "u_...", "handle": "bob", "displayName": "Bob" }, "role": "member", "lastReadSeq": 11 }
+    {
+      "user": { "id": "u_...", "handle": "alice", "displayName": "Alice" },
+      "role": "owner",
+      "lastReadSeq": 12
+    },
+    {
+      "user": { "id": "u_...", "handle": "bob", "displayName": "Bob" },
+      "role": "member",
+      "lastReadSeq": 11
+    }
   ]
 }
 ```
@@ -404,19 +412,19 @@ Event types: `message-created`, `message-updated`, `message-deleted`, `conversat
 `read`. Events are filtered by the caller's current memberships. Feed `nextSeq` into the next
 request as `after`.
 
-The terminal client polls every 1.5 seconds by default. The event feed is deliberately simple so
-SSE or WebSocket transport can replace polling later without changing the UI or data model. A
-future Android client should use push or a foreground refresh policy rather than tight polling.
+The terminal client polls every 1.5 seconds by default. The event feed is deliberately simple so SSE
+or WebSocket transport can replace polling later without changing the UI or data model. A future
+Android client should use push or a foreground refresh policy rather than tight polling.
 
 ## Management dashboard
 
 The server also serves an HTML, CSS, and JavaScript dashboard from the same origin:
 
-| Path | Asset |
-| --- | --- |
-| `/admin`, `/admin/`, `/admin/index.html` | Dashboard page |
-| `/admin/styles.css` (alias `/admin/app.css`) | Stylesheet |
-| `/admin/app.js` | Client script |
+| Path                                         | Asset          |
+| -------------------------------------------- | -------------- |
+| `/admin`, `/admin/`, `/admin/index.html`     | Dashboard page |
+| `/admin/styles.css` (alias `/admin/app.css`) | Stylesheet     |
+| `/admin/app.js`                              | Client script  |
 
 Assets are public so the page can load before sign-in; they set a strict Content Security Policy,
 `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and a no-referrer policy. Every
@@ -600,13 +608,13 @@ conversation. `limit` is 1–200 (default 50).
 
 ## Limits
 
-| Setting | Value |
-| --- | --- |
-| Request body | 64 KiB |
-| Message length | 4,000 characters |
-| Search query | 100 characters |
-| History page | 1–100 messages (default 50) |
-| Conversation members | 51 including the owner |
-| DM participants | exactly 2 |
-| Events per poll | 1–200 (default 100) |
-| Login failures | 10 per handle per 5 minutes |
+| Setting              | Value                       |
+| -------------------- | --------------------------- |
+| Request body         | 64 KiB                      |
+| Message length       | 4,000 characters            |
+| Search query         | 100 characters              |
+| History page         | 1–100 messages (default 50) |
+| Conversation members | 51 including the owner      |
+| DM participants      | exactly 2                   |
+| Events per poll      | 1–200 (default 100)         |
+| Login failures       | 10 per handle per 5 minutes |

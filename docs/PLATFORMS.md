@@ -107,6 +107,21 @@ deployment that leaves the machine:
 - create the first account immediately so an administrator exists, or set `PULSEWIRE_ADMIN_HANDLE`
   to a known account.
 
+### Administrator role management
+
+The first account registered on a fresh database becomes the administrator. Alternatively, set
+`PULSEWIRE_ADMIN_HANDLE` to promote an existing account at startup.
+
+Administrators can manage other accounts' administrator status through the dashboard at `/admin`:
+
+- **Promote**: Grant administrator privileges to any account. Promoted accounts can access all
+  `/v1/admin/*` routes, open the dashboard, and manage other accounts/conversations/messages.
+- **Demote**: Revoke administrator privileges from any account. They become a regular member and
+  lose all administrator capabilities.
+- **Last administrator protection**: The system prevents demoting the last remaining administrator.
+  At least one account must always have administrator privileges. The dashboard UI blocks this
+  action.
+
 ### At-rest database encryption
 
 Stock SQLite (used by Deno's `node:sqlite`) does **not** encrypt database files: `PRAGMA key` is
