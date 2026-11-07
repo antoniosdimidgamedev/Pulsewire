@@ -1,0 +1,34 @@
+[Unit]
+Description=Pulsewire self-hosted messaging server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/antoniosdimi/Projects/pulsewire
+ExecStart=/home/antoniosdimi/Projects/pulsewire/scripts/pulsewire-server.sh
+Restart=on-failure
+RestartSec=5
+User=antoniosdimi
+Group=antoniosdimi
+
+# Environment (edit or use an .env file)
+Environment=PULSEWIRE_SERVER_HOST=0.0.0.0
+Environment=PULSEWIRE_SERVER_PORT=8787
+Environment=PULSEWIRE_DATA_DIR=/home/antoniosdimi/.local/share/pulsewire
+Environment=PULSEWIRE_SESSION_TTL_DAYS=30
+Environment=PULSEWIRE_PBKDF2_ITERATIONS=210000
+# Uncomment and set to enable at-rest message encryption:
+# Environment=PULSEWIRE_DB_KEY=<256-bit passphrase>
+# Uncomment to promote an administrator at first start:
+# Environment=PULSEWIRE_ADMIN_HANDLE=alice
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/home/antoniosdimi/.local/share/pulsewire
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

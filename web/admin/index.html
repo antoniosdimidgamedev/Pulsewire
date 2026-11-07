@@ -79,6 +79,10 @@
             <span class="nav-icon" aria-hidden="true">≡</span>
             <span>Activity</span>
           </button>
+          <button class="nav-item" type="button" data-view="guide">
+            <span class="nav-icon" aria-hidden="true">?</span>
+            <span>Guide</span>
+          </button>
         </nav>
 
         <div class="sidebar-foot">
@@ -310,6 +314,71 @@
         </button>
       </footer>
     </dialog>
+
+    <section id="panel-guide" class="panel" aria-labelledby="guide-heading" hidden>
+      <h2 id="guide-heading" class="sr-only">Guide</h2>
+      <div class="guide-card">
+        <h3>Pulsewire setup guide</h3>
+        <p class="muted">Get your self-hosted server online and connect your devices.</p>
+
+        <details class="guide-step">
+          <summary>1. Start the server</summary>
+          <div class="guide-body">
+            <pre><code>deno task server --host 0.0.0.0 --port 8787</code></pre>
+            <p class="muted">Bind to all interfaces so LAN devices can reach it.</p>
+          </div>
+        </details>
+
+        <details class="guide-step">
+          <summary>2. Set a static LAN IP (recommended)</summary>
+          <div class="guide-body">
+            <pre><code>nmcli connection modify &lt;connection&gt; \
+  ipv4.addresses 192.168.1.55/24 \
+  ipv4.gateway 192.168.1.1 \
+  ipv4.dns "1.1.1.1,8.8.8.8" \
+  ipv4.method manual
+nmcli connection up &lt;connection&gt;</code></pre>
+            <p class="muted">A DHCP address can change and break client URLs.</p>
+          </div>
+        </details>
+
+        <details class="guide-step">
+          <summary>3. Allow port 8787 through the firewall</summary>
+          <div class="guide-body">
+            <pre><code>sudo ufw allow 8787/tcp</code></pre>
+          </div>
+        </details>
+
+        <details class="guide-step">
+          <summary>4. Confirm reachability</summary>
+          <div class="guide-body">
+            <pre><code>curl http://&lt;LAN-IP&gt;:8787/health</code></pre>
+            <p class="muted">Should return <code>{"status":"ok"}</code>.</p>
+          </div>
+        </details>
+
+        <details class="guide-step">
+          <summary>5. Connect clients</summary>
+          <div class="guide-body">
+            <p
+              class="muted">Enter <code>http://&lt;LAN-IP&gt;:8787</code> as the server address.</p>
+            <ul class="guide-list">
+              <li><strong>Terminal:</strong> <code>deno task start login &lt;handle&gt; --server http://&lt;LAN-IP&gt;:8787</code></li>
+              <li><strong>Android:</strong> Use <code>http://&lt;LAN-IP&gt;:8787</code> (emulator: <code>http://10.0.2.2:8787</code>)</li>
+              <li><strong>Dashboard:</strong> <code>http://&lt;LAN-IP&gt;:8787/admin</code></li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="guide-step">
+          <summary>6. Security boundary</summary>
+          <div class="guide-body">
+            <p
+              class="muted">Cleartext HTTP is for trusted LANs only. Use HTTPS via a reverse proxy for any network you do not control. Set <code>PULSEWIRE_DB_KEY</code> to encrypt message bodies at rest.</p>
+          </div>
+        </details>
+      </div>
+    </section>
 
     <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
 

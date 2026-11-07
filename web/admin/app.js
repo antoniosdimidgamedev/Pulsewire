@@ -38,6 +38,7 @@ const els = {
     users: document.getElementById("panel-users"),
     conversations: document.getElementById("panel-conversations"),
     activity: document.getElementById("panel-activity"),
+    guide: document.getElementById("panel-guide"),
   },
   navItems: Array.from(document.querySelectorAll(".nav-item[data-view]")),
   overviewCards: document.getElementById("overview-cards"),
@@ -93,6 +94,10 @@ const VIEW_META = {
   activity: {
     title: "Activity",
     subtitle: "Review the server's append-only event log.",
+  },
+  guide: {
+    title: "Guide",
+    subtitle: "Set up your server and connect your devices.",
   },
 };
 
