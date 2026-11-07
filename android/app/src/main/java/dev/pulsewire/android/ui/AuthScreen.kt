@@ -1,5 +1,6 @@
 package dev.pulsewire.android.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -48,8 +50,11 @@ import dev.pulsewire.android.PulsewireUiState
 @Composable
 fun AuthScreen(
     state: PulsewireUiState,
+    savedHandles: List<String> = emptyList(),
     onSignIn: (server: String, handle: String, password: String) -> Unit,
     onRegister: (server: String, handle: String, displayName: String, password: String) -> Unit,
+    onHandleSelected: (String) -> Unit = {},
+    onRemoveSavedHandle: (String) -> Unit = {},
 ) {
     var registerMode by rememberSaveable { mutableStateOf(false) }
     var server by rememberSaveable {
@@ -59,6 +64,7 @@ fun AuthScreen(
     var displayName by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    var showAccountChooser by rememberSaveable { mutableStateOf(savedHandles.isNotEmpty()) }
 
     fun submit() {
         if (registerMode) {
@@ -66,6 +72,11 @@ fun AuthScreen(
         } else {
             onSignIn(server, handle, password)
         }
+    }
+
+    fun selectSavedHandle(selectedHandle: String) {
+        handle = selectedHandle
+        showAccountChooser = false
     }
 
     Column(
@@ -123,6 +134,38 @@ fun AuthScreen(
         }
 
         Spacer(Modifier.height(20.dp))
+
+        // Saved account chooser
+        if (savedHandles.isNotEmpty() && showAccountChooser) {
+            Column(Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Sign in as",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    savedHandles.forEach { savedHandle ->
+                        FilterChip(
+                            selected = false,
+                            onClick = { selectSavedHandle(savedHandle) },
+                            label = { Text("@$savedHandle") },
+                        )
+                    }
+                    FilterChip(
+                        selected = false,
+                        onClick = { showAccountChooser = false },
+                        label = { Text("Enter manually") },
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
         OutlinedTextField(
             value = server,
             onValueChange = { server = it },
@@ -159,6 +202,7 @@ fun AuthScreen(
             label = { Text("Handle") },
             singleLine = true,
             prefix = { Text("@") },
+            autofill = androidx.compose.ui.autofill.AutofillType.Text,
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Ascii,
                 imeAction = ImeAction.Next,
@@ -171,6 +215,8 @@ fun AuthScreen(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Password") },
             singleLine = true,
+            autofill = androidx.compose.ui.autofill.AutofillType.Password,
+            visualTransformation = if (passwordVisible) {
             visualTransformation = if (passwordVisible) {
                 VisualTransformation.None
             } else {

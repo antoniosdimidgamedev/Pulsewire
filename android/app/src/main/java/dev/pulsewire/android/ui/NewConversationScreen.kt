@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.dp
 import dev.pulsewire.android.PulsewireUiState
 import dev.pulsewire.android.data.User
 
-private enum class NewConversationKind(val apiValue: String, val label: String) {
+enum class NewConversationKind(val apiValue: String, val label: String) {
     Direct("dm", "Direct"),
     Group("group", "Group"),
     Space("space", "Space"),
@@ -59,8 +59,9 @@ fun NewConversationScreen(
         topic: String,
         memberHandles: List<String>,
     ) -> Unit,
+    initialKind: NewConversationKind = NewConversationKind.Direct,
 ) {
-    var kind by rememberSaveable { mutableStateOf(NewConversationKind.Direct) }
+    var kind by rememberSaveable { mutableStateOf(initialKind) }
     var name by rememberSaveable { mutableStateOf("") }
     var topic by rememberSaveable { mutableStateOf("") }
     var query by rememberSaveable { mutableStateOf("") }

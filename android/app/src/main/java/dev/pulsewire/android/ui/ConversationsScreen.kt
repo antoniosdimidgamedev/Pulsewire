@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Person
@@ -50,6 +51,7 @@ fun ConversationsScreen(
     state: PulsewireUiState,
     onOpenConversation: (String) -> Unit,
     onNewConversation: () -> Unit,
+    onNewGroup: () -> Unit,
     onSearch: () -> Unit,
     onProfile: () -> Unit,
     onRefresh: () -> Unit,
@@ -69,6 +71,9 @@ fun ConversationsScreen(
                 }
                 IconButton(onClick = onNewConversation) {
                     Icon(Icons.Filled.Add, contentDescription = "New conversation")
+                }
+                IconButton(onClick = onNewGroup) {
+                    Icon(Icons.Filled.Group, contentDescription = "New group")
                 }
                 IconButton(onClick = onProfile) {
                     Icon(Icons.Filled.Person, contentDescription = "Profile")

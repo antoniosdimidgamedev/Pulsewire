@@ -14,6 +14,7 @@ import dev.pulsewire.android.data.PulsewireApi
 import dev.pulsewire.android.data.SearchResult
 import dev.pulsewire.android.data.SessionStore
 import dev.pulsewire.android.data.User
+import dev.pulsewire.android.ui.NewConversationKind
 import java.time.Instant
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -23,7 +24,7 @@ import kotlinx.coroutines.launch
 sealed interface Screen {
     data object Conversations : Screen
     data class Chat(val conversationId: String) : Screen
-    data object NewConversation : Screen
+    data class NewConversation(val initialKind: NewConversationKind = NewConversationKind.Direct) : Screen
     data class Members(val conversationId: String) : Screen
     data object Profile : Screen
     data object Search : Screen
@@ -60,6 +61,9 @@ class PulsewireViewModel(application: Application) : AndroidViewModel(applicatio
         private set
 
     var screen by mutableStateOf<Screen>(Screen.Conversations)
+        private set
+
+    var savedHandles by mutableStateOf(session.savedHandles())
         private set
 
     var state by mutableStateOf(
@@ -425,6 +429,11 @@ class PulsewireViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun navigate(target: Screen) {
         screen = target
+    }
+
+    fun removeSavedHandle(handle: String) {
+        session.removeHandle(handle)
+        state = state.copy(savedHandles = session.savedHandles())
     }
 
     fun openSettings() {

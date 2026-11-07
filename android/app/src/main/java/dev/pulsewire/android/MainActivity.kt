@@ -22,6 +22,7 @@ import dev.pulsewire.android.ui.AboutScreen
 import dev.pulsewire.android.ui.ChatScreen
 import dev.pulsewire.android.ui.ConversationsScreen
 import dev.pulsewire.android.ui.MembersScreen
+import dev.pulsewire.android.ui.NewConversationKind
 import dev.pulsewire.android.ui.NewConversationScreen
 import dev.pulsewire.android.ui.ProfileScreen
 import dev.pulsewire.android.ui.PulsewireTheme
@@ -72,8 +73,11 @@ fun PulsewireApp(vm: PulsewireViewModel = viewModel()) {
             if (!vm.authenticated) {
                 AuthScreen(
                     state = state,
+                    savedHandles = vm.savedHandles,
                     onSignIn = vm::signIn,
                     onRegister = vm::register,
+                    onHandleSelected = { handle -> },
+                    onRemoveSavedHandle = vm::removeSavedHandle,
                 )
             } else {
                 when (val screen = vm.screen) {
@@ -81,6 +85,7 @@ fun PulsewireApp(vm: PulsewireViewModel = viewModel()) {
                         state = state,
                         onOpenConversation = vm::openConversation,
                         onNewConversation = { vm.navigate(Screen.NewConversation) },
+                        onNewGroup = { vm.navigate(Screen.NewConversation(NewConversationKind.Group)) },
                         onSearch = { vm.navigate(Screen.Search) },
                         onProfile = vm::openProfile,
                         onRefresh = vm::refreshConversations,
@@ -100,6 +105,7 @@ fun PulsewireApp(vm: PulsewireViewModel = viewModel()) {
                         onBack = vm::goBack,
                         onSearchUsers = vm::searchUsers,
                         onCreate = vm::createConversation,
+                        initialKind = screen.initialKind,
                     )
                     is Screen.Members -> MembersScreen(
                         state = state,

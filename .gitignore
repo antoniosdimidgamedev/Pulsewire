@@ -6,7 +6,7 @@ config.local.json
 pulsewire.config.json
 
 # Demo data, if you point PULSEWIRE_DATA_DIR at the repository
-data/
+/data/
 .pulsewire/
 googlechat-token.json
 googlechat-readstate.json

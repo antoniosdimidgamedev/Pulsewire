@@ -34,10 +34,32 @@ class SessionStore(context: Context) {
             .putString(KEY_TOKEN, encrypt(token))
             .putString(KEY_USER, encrypt(json.encodeToString(user)))
             .apply()
+        saveHandle(user.handle)
     }
 
     fun saveServerUrl(serverUrl: String) {
         prefs.edit().putString(KEY_SERVER, serverUrl).apply()
+    }
+
+    fun savedHandles(): List<String> {
+        return prefs.getString(KEY_SAVED_HANDLES, "")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    fun saveHandle(handle: String) {
+        if (handle.isBlank()) return
+        val current = savedHandles()
+        val updated = (current + handle).distinct().take(10)
+        prefs.edit().putString(KEY_SAVED_HANDLES, updated.joinToString(",")).apply()
+    }
+
+    fun removeHandle(handle: String) {
+        val current = savedHandles()
+        val updated = current.filter { it != handle }
+        prefs.edit().putString(KEY_SAVED_HANDLES, updated.joinToString(",")).apply()
     }
 
     fun saveUser(user: User) {
@@ -98,6 +120,7 @@ class SessionStore(context: Context) {
         private const val KEY_SERVER = "server_url"
         private const val KEY_TOKEN = "session_token"
         private const val KEY_USER = "session_user"
+        private const val KEY_SAVED_HANDLES = "saved_handles"
         private const val KEY_ALIAS = "pulsewire.session.v1"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
