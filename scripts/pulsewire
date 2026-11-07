@@ -4,6 +4,9 @@
 # Usage:
 #   pulsewire server               # start the server (foreground)
 #   pulsewire server --daemon      # start the server in the background
+#   pulsewire dashboard            # open the management dashboard in a browser
+#   pulsewire connect              # alias for dashboard
+#   pulsewire status               # check if the daemon is running
 #   pulsewire start                # start the terminal UI
 #   pulsewire --help               # show this help
 #
@@ -11,7 +14,7 @@
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 cd "$REPO_DIR"
 
 DENO="${DENO:-deno}"
@@ -21,12 +24,60 @@ if ! command -v "$DENO" >/dev/null 2>&1; then
   exit 1
 fi
 
+DATA_DIR="${PULSEWIRE_DATA_DIR:-$HOME/.local/share/pulsewire}"
+PID_FILE="${PULSEWIRE_PID_FILE:-$DATA_DIR/server.pid}"
+HOST="${PULSEWIRE_SERVER_HOST:-127.0.0.1}"
+PORT="${PULSEWIRE_SERVER_PORT:-8787}"
+
+is_running() {
+  [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+open_browser() {
+  local url="$1"
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url" >/dev/null 2>&1 &
+  elif command -v open >/dev/null 2>&1; then
+    open "$url" >/dev/null 2>&1 &
+  elif command -v wslview >/dev/null 2>&1; then
+    wslview "$url" >/dev/null 2>&1 &
+  else
+    echo "Error: no browser opener found (xdg-open, open, or wslview)." >&2
+    echo "Open this URL manually: $url" >&2
+    return 1
+  fi
+}
+
 cmd="${1:-}"
 shift || true
 
 case "$cmd" in
   server|serve)
+    if [[ "${1:-}" == "--daemon" || "${1:-}" == "-d" ]]; then
+      shift || true
+      exec "$REPO_DIR/scripts/pulsewire-server.sh" --daemon "$@"
+    fi
     exec "$DENO" task server "$@"
+    ;;
+  dashboard|connect)
+    if ! is_running; then
+      echo "Error: Pulsewire daemon is not running." >&2
+      echo "Start it with: pulsewire server --daemon" >&2
+      exit 1
+    fi
+    url="http://${HOST}:${PORT}/admin"
+    echo "Opening dashboard: $url"
+    open_browser "$url"
+    ;;
+  status)
+    if is_running; then
+      echo "Pulsewire is running (PID $(cat "$PID_FILE"))."
+      echo "Dashboard: http://${HOST}:${PORT}/admin"
+      exit 0
+    else
+      echo "Pulsewire is not running."
+      exit 1
+    fi
     ;;
   start|tui)
     exec "$DENO" task start "$@"
@@ -60,6 +111,9 @@ Usage: pulsewire <command> [options]
 
 Commands:
   server [--daemon]   Start the Pulsewire server (default: foreground)
+  dashboard           Open the management dashboard in a browser
+  connect             Alias for dashboard
+  status              Check if the daemon is running
   start               Start the terminal UI (TUI)
   dev                 Start the TUI with the local demo provider
   test                Run the test suite
@@ -73,11 +127,14 @@ Commands:
 Environment variables:
   PULSEWIRE_SERVER_HOST   Bind address (default: 127.0.0.1)
   PULSEWIRE_SERVER_PORT   TCP port (default: 8787)
+  PULSEWIRE_DATA_DIR      Data/log directory (default: ~/.local/share/pulsewire)
   PULSEWIRE_DB_KEY        At-rest encryption passphrase for message bodies
   PULSEWIRE_ADMIN_HANDLE  Handle promoted to administrator at first start
 
 Examples:
   pulsewire server --host 0.0.0.0 --port 8787
+  pulsewire server --daemon
+  pulsewire dashboard
   PULSEWIRE_DB_KEY=\$(cat ~/pulsewire-db-key.txt) pulsewire server --daemon
   pulsewire start --server http://192.168.1.55:8787
 EOF
