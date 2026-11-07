@@ -202,7 +202,6 @@ fun AuthScreen(
             label = { Text("Handle") },
             singleLine = true,
             prefix = { Text("@") },
-            autofill = androidx.compose.ui.autofill.AutofillType.Text,
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Ascii,
                 imeAction = ImeAction.Next,
@@ -215,8 +214,6 @@ fun AuthScreen(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Password") },
             singleLine = true,
-            autofill = androidx.compose.ui.autofill.AutofillType.Password,
-            visualTransformation = if (passwordVisible) {
             visualTransformation = if (passwordVisible) {
                 VisualTransformation.None
             } else {

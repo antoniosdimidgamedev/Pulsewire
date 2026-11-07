@@ -84,7 +84,7 @@ fun PulsewireApp(vm: PulsewireViewModel = viewModel()) {
                     Screen.Conversations -> ConversationsScreen(
                         state = state,
                         onOpenConversation = vm::openConversation,
-                        onNewConversation = { vm.navigate(Screen.NewConversation) },
+                        onNewConversation = { vm.navigate(Screen.NewConversation(NewConversationKind.Direct)) },
                         onNewGroup = { vm.navigate(Screen.NewConversation(NewConversationKind.Group)) },
                         onSearch = { vm.navigate(Screen.Search) },
                         onProfile = vm::openProfile,
@@ -100,7 +100,7 @@ fun PulsewireApp(vm: PulsewireViewModel = viewModel()) {
                         onEdit = vm::editMessage,
                         onDelete = vm::deleteMessage,
                     )
-                    Screen.NewConversation -> NewConversationScreen(
+                    is Screen.NewConversation -> NewConversationScreen(
                         state = state,
                         onBack = vm::goBack,
                         onSearchUsers = vm::searchUsers,

@@ -43,10 +43,11 @@ class SessionStore(context: Context) {
 
     fun savedHandles(): List<String> {
         return prefs.getString(KEY_SAVED_HANDLES, "")
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?.distinct()
+            ?: emptyList()
     }
 
     fun saveHandle(handle: String) {

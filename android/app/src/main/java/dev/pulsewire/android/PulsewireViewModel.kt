@@ -47,6 +47,7 @@ data class PulsewireUiState(
     val loadingMore: Boolean = false,
     val working: Boolean = false,
     val notice: String? = null,
+    val savedHandles: List<String> = emptyList(),
 )
 
 class PulsewireViewModel(application: Application) : AndroidViewModel(application) {
