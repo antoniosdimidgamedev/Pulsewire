@@ -1233,8 +1233,8 @@ export function validateDisplayName(value: string): string {
 }
 
 export function validatePassword(password: string): void {
-  if (password.length < 10) {
-    throw badRequest("Passwords must be at least 10 characters.");
+  if (password.length > 200) {
+    throw badRequest("Passwords must be 200 characters or fewer.");
   }
   if (password.length > 200) {
     throw badRequest("Passwords must be 200 characters or fewer.");

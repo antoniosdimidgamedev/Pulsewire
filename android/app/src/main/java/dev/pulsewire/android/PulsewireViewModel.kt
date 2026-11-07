@@ -110,10 +110,6 @@ class PulsewireViewModel(application: Application) : AndroidViewModel(applicatio
             state = state.copy(notice = "Enter a handle, display name, and password.")
             return
         }
-        if (password.length < 10) {
-            state = state.copy(notice = "Passwords must be at least 10 characters.")
-            return
-        }
         viewModelScope.launch {
             state = state.copy(loading = true, notice = null)
             try {

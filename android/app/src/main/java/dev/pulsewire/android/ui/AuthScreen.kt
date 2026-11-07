@@ -236,7 +236,7 @@ fun AuthScreen(
                 }
             },
             supportingText = if (registerMode) {
-                { Text("At least 10 characters.") }
+                { Text("Optional: choose a strong password.") }
             } else {
                 null
             },

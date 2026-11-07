@@ -98,7 +98,6 @@ Deno.test("accounts: validation and profile updates", async () => {
   strictEqual(normalizeHandle("  @Alice_1 "), "alice_1");
   throws(() => validateHandle("ab"), /3-32 characters/);
   throws(() => validateHandle("has space"), /3-32 characters/);
-  throws(() => validatePassword("short"), /at least 10/);
 
   const updated = store.updateProfile(alice.user.id, { displayName: "  Alice   A. " });
   strictEqual(updated.displayName, "Alice A.");
